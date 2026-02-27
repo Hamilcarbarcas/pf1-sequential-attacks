@@ -1,0 +1,33 @@
+{
+  "id": "pf1-sequential-attacks",
+  "title": "PF1e Sequential Attacks",
+  "description": "When enabled, full attacks are rolled one at a time instead of all at once, allowing retargeting and effect changes between attacks.",
+  "authors": [
+    {
+      "name": "Hamilcar Barca",
+      "flags": {}
+    }
+  ],
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "dependencies": [
+    {
+      "id": "lib-wrapper",
+      "type": "module",
+      "manifest": "https://github.com/ruipin/fvtt-lib-wrapper/releases/latest/download/module.json"
+    },
+    {
+      "id": "pf1",
+      "type": "system"
+    }
+  ],
+  "scripts": [
+    "scripts/sequential-attacks.mjs"
+  ],
+  "styles": [
+    "styles/sequential-attacks.css"
+  ]
+}

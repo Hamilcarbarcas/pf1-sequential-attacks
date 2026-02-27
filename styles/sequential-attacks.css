@@ -1,0 +1,236 @@
+/* ---- Sequential Attack Tracker Dialog ---- */
+
+.sequential-attack-dialog {
+  background: var(--color-bg, #1a1a2e);
+}
+
+.sequential-attack-dialog .dialog-content {
+  padding: 0;
+}
+
+.sequential-attack-tracker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  font-family: var(--font-primary, "Signika", sans-serif);
+}
+
+/* ---- Header ---- */
+
+.seq-attack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-light-2, #444);
+  margin-bottom: 2px;
+}
+
+.seq-attack-title {
+  font-weight: bold;
+  font-size: 13px;
+  color: var(--color-text-light-highlight, #eee);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.seq-attack-progress {
+  font-size: 12px;
+  color: var(--color-text-dark-secondary, #aaa);
+  white-space: nowrap;
+}
+
+/* ---- Attack List ---- */
+
+.seq-attack-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.seq-attack-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+/* Pending (future attacks) */
+.seq-attack-row.seq-pending {
+  background: transparent;
+  color: var(--color-text-dark-secondary, #999);
+}
+
+.seq-attack-row.seq-pending .seq-attack-icon {
+  color: var(--color-text-dark-secondary, #666);
+}
+
+/* Current attack (highlighted) */
+.seq-attack-row.seq-current {
+  background: rgba(40, 100, 180, 0.45);
+  border: 1px solid rgba(80, 160, 255, 0.6);
+  color: #fff;
+  font-weight: bold;
+}
+
+.seq-attack-row.seq-current .seq-attack-icon {
+  color: #b0dfff;
+  animation: seq-pulse 1.5s ease-in-out infinite;
+}
+
+/* Resolved (completed attacks) */
+.seq-attack-row.seq-resolved {
+  background: rgba(80, 200, 120, 0.08);
+  color: var(--color-text-dark-secondary, #888);
+  opacity: 0.55;
+}
+
+.seq-attack-row.seq-resolved .seq-attack-icon {
+  color: #50c878;
+}
+
+.seq-attack-row.seq-resolved .seq-attack-label {
+  text-decoration: line-through;
+  text-decoration-color: rgba(136, 136, 136, 0.4);
+}
+
+/* Skipped attacks */
+.seq-attack-row.seq-skipped {
+  background: rgba(200, 170, 50, 0.08);
+  color: var(--color-text-dark-secondary, #888);
+  opacity: 0.55;
+}
+
+.seq-attack-row.seq-skipped .seq-attack-icon {
+  color: #c8a832;
+}
+
+.seq-attack-row.seq-skipped .seq-attack-label {
+  text-decoration: line-through;
+  text-decoration-color: rgba(200, 170, 50, 0.5);
+}
+
+.seq-attack-row.seq-skipped .seq-attack-bonus {
+  text-decoration: line-through;
+  text-decoration-color: rgba(200, 170, 50, 0.5);
+}
+
+/* ---- Icons & Labels ---- */
+
+.seq-attack-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.seq-attack-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seq-attack-bonus {
+  flex-shrink: 0;
+  font-weight: bold;
+  font-size: 13px;
+  min-width: 32px;
+  text-align: right;
+  font-family: var(--font-mono, "Courier New", monospace);
+}
+
+/* ---- Buttons ---- */
+
+.seq-attack-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-border-light-2, #444);
+}
+
+.seq-attack-buttons button {
+  flex: 1;
+  padding: 3px 6px !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  min-height: 0 !important;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--color-border-light-2, #555);
+  transition: background 0.15s, transform 0.1s;
+}
+
+.seq-attack-buttons button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.seq-attack-buttons button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Next / Final attack button */
+.seq-next-btn {
+  background: rgba(40, 100, 180, 0.5);
+  color: #e0f0ff;
+  border-color: rgba(80, 160, 255, 0.6) !important;
+}
+
+.seq-next-btn:hover:not(:disabled) {
+  background: rgba(50, 120, 210, 0.65);
+}
+
+.seq-next-btn:disabled,
+.seq-next-btn.seq-btn-working {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+/* Skip button */
+.seq-skip-btn {
+  background: rgba(200, 170, 50, 0.35);
+  color: #fff0cc;
+  border-color: rgba(200, 170, 50, 0.5) !important;
+  flex: 0.35 !important;
+}
+
+.seq-skip-btn:hover:not(:disabled) {
+  background: rgba(210, 180, 60, 0.5);
+}
+
+/* Cancel button */
+.seq-cancel-btn {
+  background: rgba(180, 50, 50, 0.4);
+  color: #ffcccc;
+  border-color: rgba(220, 80, 80, 0.5) !important;
+  flex: 0.4 !important;
+}
+
+.seq-cancel-btn:hover:not(:disabled) {
+  background: rgba(200, 60, 60, 0.55);
+}
+
+/* Done button */
+.seq-close-btn {
+  background: rgba(80, 200, 120, 0.2);
+  color: #7ddf9b;
+  border-color: rgba(80, 200, 120, 0.4) !important;
+}
+
+.seq-close-btn:hover {
+  background: rgba(80, 200, 120, 0.35);
+}
+
+/* ---- Pulse animation for current attack icon ---- */
+
+@keyframes seq-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
