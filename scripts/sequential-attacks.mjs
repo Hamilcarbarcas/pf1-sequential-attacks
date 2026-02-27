@@ -33,10 +33,10 @@ Hooks.once("ready", () => {
     "pf1-sequential-attacks",
     "pf1.actionUse.ActionUse.prototype.process",
     sequentialProcessWrapper,
-    "WRAPPER"
+    "MIXED"
   );
 
-  console.log("pf1-sequential-attacks | Sequential Attacks wrapper registered (WRAPPER priority).");
+  console.log("pf1-sequential-attacks | Sequential Attacks wrapper registered (MIXED priority).");
 });
 
 // ---- Core Wrapper ---- //
