@@ -1,0 +1,52 @@
+/* PF1 Sequential Attacks – chat card styles */
+
+.pf1-seq-card {
+  border: 1px solid #7a7971;
+  border-radius: 3px;
+  background: rgba(255, 250, 240, 0.85);
+  padding: 4px 6px;
+}
+
+.pf1-seq-card .card-header h3 {
+  font-size: 14px;
+  font-weight: bold;
+  border-bottom: 1px solid #7a7971;
+  margin-bottom: 4px;
+  padding-bottom: 2px;
+}
+
+.pf1-seq-hint {
+  font-size: 11px;
+  font-style: italic;
+  color: #555;
+  margin: 0 0 4px;
+}
+
+.pf1-seq-attacks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pf1-seq-attack-btn {
+  width: 100%;
+  padding: 4px 8px;
+  text-align: left;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid #7a7971;
+  border-radius: 3px;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.pf1-seq-attack-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.pf1-seq-attack-btn.pf1-seq--used,
+.pf1-seq-attack-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
