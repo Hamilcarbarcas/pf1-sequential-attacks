@@ -1,0 +1,25 @@
+<div class="pf1-seq-card chat-card">
+  <header class="card-header">
+    <h3 class="item-name">{{actionName}}: Sequential Attacks</h3>
+  </header>
+  <div class="card-content">
+    <p class="pf1-seq-hint">Click each button below to roll that attack individually.</p>
+    <div class="pf1-seq-attacks">
+      {{#each attacks}}
+      <div class="pf1-seq-attack-row">
+        <button
+          class="pf1-seq-attack-btn"
+          data-seq-action="roll"
+          data-index="{{index}}"
+          data-actor-id="{{../actorId}}"
+          data-item-id="{{../itemId}}"
+          data-action-id="{{../actionId}}"
+          type="button"
+        >
+          {{label}}{{#if bonus}} ({{bonus}}){{/if}}
+        </button>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+</div>
