@@ -1,47 +1,41 @@
-name: Release Creation
+name: Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Strip the leading 'v' from the tag name to get a clean semver version string.
       - name: Extract version from tag
-        id: get_version
+        id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # Substitute the Manifest and Download URLs in module.json for the released version.
-      - name: Substitute Manifest and Download Links For Versioned Ones
-        id: sub_manifest_link_version
-        uses: microsoft/variable-substitution@v1
-        with:
-          files: "module.json"
-        env:
-          version: ${{ steps.get_version.outputs.version }}
-          url: https://github.com/${{ github.repository }}
-          manifest: https://github.com/${{ github.repository }}/releases/latest/download/module.json
-          download: https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/module.zip
+      - name: Update download URL in module.json
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          jq --arg v "$VERSION" \
+             --arg dl "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/module.zip" \
+             '.version = $v | .download = $dl' \
+             module.json > module.json.tmp
+          mv module.json.tmp module.json
 
-      # Create a zip with all files the module needs at runtime.
-      - name: Create module ZIP
-        run: zip -r ./module.zip scripts/ styles/ templates/ module.json LICENSE README.md
+      - name: Package module
+        run: zip -r module.zip module.json scripts/
 
-      # Attach module.json and module.zip to the release.
-      - name: Update Release with Files
-        uses: ncipollo/release-action@v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          allowUpdates: true
-          name: ${{ github.event.release.name }}
-          tag: ${{ github.event.release.tag_name }}
-          body: ${{ github.event.release.body }}
-          draft: ${{ github.event.release.draft }}
-          prerelease: ${{ github.event.release.prerelease }}
-          artifacts: "./module.json,./module.zip"
-          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: "v${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          files: |
+            module.json
+            module.zip
