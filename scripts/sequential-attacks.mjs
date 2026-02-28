@@ -417,10 +417,15 @@ class SequentialAttackTracker {
       shared.attackBonus = shared.attackBonus.filter((part) => !part?.includes?.(chargeTag));
     }
 
-    // Re-apply the form-based alterations (power attack, conditionals, etc.)
+    // Re-apply the form-based alterations (power attack, d20 override, conditionals, etc.)
     // We need to re-run alterRollData with the saved form data since getRollData() resets rollData
     // but we need to preserve the state. We selectively re-apply key values.
     rollData.fullAttack = shared.fullAttack ? 1 : 0;
+
+    // Restore d20 check override (e.g. "11" to force all attack rolls to 11)
+    if (shared.formData?.["d20"]) {
+      rollData.d20 = shared.formData["d20"];
+    }
     if (shared.powerAttack) {
       const basePowerAttackBonus = rollData.action?.powerAttack?.damageBonus ?? 2;
       let powerAttackBonus = (1 + Math.floor(rollData.attributes.bab.total / 4)) * basePowerAttackBonus;
@@ -549,19 +554,31 @@ class SequentialAttackTracker {
       isLast: idx === this.allAttacks.length - 1,
     };
 
-    if (isFirstResolvedAttack) {
-      const hookResult = Hooks.call("pf1PreActionUse", actionUse);
-      if (hookResult === false) {
-        shared.chatAttacks = origChatAttacks;
-        delete rollData.attackCount;
-        this._completed = true;
-        this._resolve("cancelled");
-        this.dialog?.close();
-        return;
-      }
+    // Narrow shared.attacks to just the current attack BEFORE firing hooks,
+    // so that hooks iterating shared.attacks (e.g. fumble confirmation) see
+    // only the current attack with its populated chatAttack.
+    shared.attacks = [atk];
 
+    // Fire pf1PreActionUse for every sequential attack so per-attack hooks
+    // (fumble confirmation, damage footnotes, etc.) run for each attack.
+    // Hooks can check shared.sequentialAttack for sequence context.
+    const hookResult = Hooks.call("pf1PreActionUse", actionUse);
+    if (hookResult === false) {
+      shared.attacks = origAttacks;
+      shared.chatAttacks = origChatAttacks;
+      delete rollData.attackCount;
+      this._completed = true;
+      this._resolve("cancelled");
+      this.dialog?.close();
+      return;
+    }
+
+    // Script calls ("use" category) only run once for the whole sequence,
+    // on the first resolved attack — they handle resource deduction, etc.
+    if (isFirstResolvedAttack) {
       await actionUse.executeScriptCalls();
       if (shared.scriptData?.reject) {
+        shared.attacks = origAttacks;
         shared.chatAttacks = origChatAttacks;
         delete rollData.attackCount;
         this._completed = true;
@@ -572,9 +589,6 @@ class SequentialAttackTracker {
 
       this.sequenceStarted = true;
     }
-
-    // Temporarily isolate shared data to a single attack for message generation.
-    shared.attacks = [atk];
 
     // Subtract ammo for this single attack
     const ammoCost = action.ammo.cost;
