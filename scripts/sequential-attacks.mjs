@@ -130,6 +130,12 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   // over the roll-and-post cycle. For weapon attacks (the primary use case)
   // this is fine — Nevela's only runs custom logic for spells/consumables/classFeats,
   // and those rarely have multi-attack full attacks.
+
+  // Snapshot the bonus arrays BEFORE alterRollData pushes to them.
+  // This lets the "Edit Options" button reset and cleanly re-apply.
+  shared._preAlterAttackBonus = [...shared.attackBonus];
+  shared._preAlterDamageBonus = [...shared.damageBonus];
+
   actionUse.formData = form;
   shared.formData = form;
   await actionUse.alterRollData(form);
@@ -342,6 +348,7 @@ class SequentialAttackTracker {
       const btnIcon = isLast ? "fas fa-flag-checkered" : "fas fa-dice-d20";
       html += `<button type="button" class="seq-next-btn"><i class="${btnIcon}"></i> ${btnLabel}</button>`;
       html += `<button type="button" class="seq-skip-btn"><i class="fas fa-forward"></i> Skip</button>`;
+      html += `<button type="button" class="seq-edit-btn"><i class="fas fa-sliders-h"></i> Edit Options</button>`;
       html += `<button type="button" class="seq-cancel-btn"><i class="fas fa-times"></i> Cancel</button>`;
     } else {
       html += `<button type="button" class="seq-close-btn"><i class="fas fa-check"></i> Done</button>`;
@@ -371,6 +378,20 @@ class SequentialAttackTracker {
     html.find(".seq-skip-btn").off("click").on("click", (ev) => {
       ev.preventDefault();
       this._skipCurrentAttack();
+    });
+
+    html.find(".seq-edit-btn").off("click").on("click", async (ev) => {
+      ev.preventDefault();
+      const btn = $(ev.currentTarget);
+      btn.prop("disabled", true).addClass("seq-btn-working");
+      try {
+        await this._editOptions();
+      } catch (err) {
+        console.error("pf1-sequential-attacks | Error editing options:", err);
+        ui.notifications.error("Error editing attack options. Check console.");
+      } finally {
+        btn.prop("disabled", false).removeClass("seq-btn-working");
+      }
     });
 
     html.find(".seq-cancel-btn").off("click").on("click", (ev) => {
@@ -641,6 +662,70 @@ class SequentialAttackTracker {
   }
 
   /**
+   * Reopen the attack dialog so the user can change options (power attack,
+   * flanking, PBS, d20 override, conditionals, etc.) for remaining attacks.
+   */
+  async _editOptions() {
+    const actionUse = this.actionUse;
+    const shared = actionUse.shared;
+
+    // Save current state for rollback if the user cancels the dialog
+    const savedAttackBonus = [...shared.attackBonus];
+    const savedDamageBonus = [...shared.damageBonus];
+    const savedFormData = shared.formData;
+    const savedFlags = {
+      powerAttack: shared.powerAttack,
+      pointBlankShot: shared.pointBlankShot,
+      flanking: shared.flanking,
+      highGround: shared.highGround,
+      charge: shared.charge,
+    };
+
+    // Reset bonus arrays to the pre-alterRollData snapshot so alterRollData
+    // can cleanly push new values without duplicating previous entries.
+    shared.attackBonus = [...(shared._preAlterAttackBonus ?? [])];
+    shared.damageBonus = [...(shared._preAlterDamageBonus ?? [])];
+    shared.powerAttack = false;
+    shared.pointBlankShot = false;
+    shared.flanking = false;
+    shared.highGround = false;
+    shared.charge = false;
+
+    // Refresh rollData so the dialog reads fresh actor state
+    actionUse.getRollData();
+
+    // Show the edit-options dialog (pre-populated, no attacks table, OK button)
+    const form = await new SequentialEditDialog(actionUse, savedFormData).show();
+
+    if (form) {
+      // Force full attack — we're mid-sequence
+      form.fullAttack = true;
+
+      // Apply the new options
+      shared.formData = form;
+      actionUse.formData = form;
+      await actionUse.alterRollData(form);
+
+      // Re-process conditionals with the new selections
+      await actionUse.handleConditionals();
+
+      console.debug("PF1 | Sequential attack options updated mid-sequence.");
+      this._updateDialog();
+    } else {
+      // Cancelled — restore previous state
+      shared.attackBonus = savedAttackBonus;
+      shared.damageBonus = savedDamageBonus;
+      shared.formData = savedFormData;
+      shared.powerAttack = savedFlags.powerAttack;
+      shared.pointBlankShot = savedFlags.pointBlankShot;
+      shared.flanking = savedFlags.flanking;
+      shared.highGround = savedFlags.highGround;
+      shared.charge = savedFlags.charge;
+      console.debug("PF1 | Sequential attack option edit cancelled.");
+    }
+  }
+
+  /**
    * Skip the current attack without rolling it.
    */
   _skipCurrentAttack() {
@@ -674,6 +759,75 @@ class SequentialAttackTracker {
         }, 800);
       }
     }
+  }
+}
+
+// ---- Sequential Edit Options Dialog ---- //
+
+/**
+ * Subclass of the PF1 AttackDialog used mid-sequence to let the user change
+ * attack options (power attack, flanking, PBS, d20 override, conditionals, etc.)
+ * between sequential attacks.
+ *
+ * Differences from the standard dialog:
+ *  - Pre-populated with the previous formData selections
+ *  - Attacks table hidden (attack list is already committed)
+ *  - Single "OK" button instead of Single Attack / Full Attack
+ *  - Haste / Rapid Shot / Manyshot toggles don't modify the attack list
+ */
+class SequentialEditDialog extends pf1.applications.AttackDialog {
+  constructor(actionUse, previousFormData, appOptions = {}) {
+    super(actionUse, appOptions);
+
+    const prev = previousFormData ?? {};
+
+    // Pre-populate checkboxes from previous form data
+    const flagKeys = [
+      "power-attack", "primary-attack", "flanking", "highGround", "charge",
+      "haste-attack", "manyshot", "rapid-shot", "point-blank-shot",
+      "measure-template", "cl-check", "concentration",
+    ];
+    for (const key of flagKeys) {
+      if (key in prev) this.flags[key] = !!prev[key];
+    }
+
+    // Pre-populate text / select inputs
+    const attrKeys = [
+      "d20", "attack-bonus", "damage-bonus",
+      "damage-ability-multiplier", "rollMode", "held",
+    ];
+    for (const key of attrKeys) {
+      if (prev[key] != null && prev[key] !== "") {
+        this.attributes[key] = prev[key];
+      }
+    }
+
+    // Pre-populate conditionals
+    for (const key of Object.keys(prev)) {
+      if (key.startsWith("conditionals.") && this.conditionals[key]) {
+        this.conditionals[key].enabled = !!prev[key];
+      }
+    }
+  }
+
+  /** @override — attack list is committed; don't add/remove extra attacks. */
+  _toggleExtraAttack() {}
+
+  get title() {
+    return `Edit Attack Options: ${this.actionUse.item.name}`;
+  }
+
+  /** @override */
+  activateListeners(html) {
+    super.activateListeners(html);
+
+    // Hide the committed attacks table
+    html.find(".attacks").hide();
+
+    // Replace Single Attack / Full Attack with a single "OK" button
+    html.find(`button[name="attack_single"]`).remove();
+    html.find(`button[name="attack_full"]`)
+      .html(`<i class="fas fa-check"></i> OK`);
   }
 }
 
