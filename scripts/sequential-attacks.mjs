@@ -195,14 +195,12 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   // Show the tracker dialog (non-blocking — we drive it with promises)
   const trackerResult = await tracker.run();
 
-  if (trackerResult === "cancelled") {
-    // Clean up any placed templates
+  if (!tracker.sequenceResolvedAny) {
     await measureTemplate?.delete();
-    console.debug("PF1 | Sequential attack cancelled by user.");
+    console.debug("PF1 | Sequential attack ended before any attacks were resolved.");
     return;
   }
 
-  // Deselect targets after all attacks
   if (game.settings.get("pf1", "clearTargetsAfterAttack") && game.user.targets.size) {
     if (game.release.generation >= 13) {
       game.user._onUpdateTokenTargets([]);
@@ -210,6 +208,14 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
       game.user.updateTokenTargets([]);
     }
     game.user.broadcastActivity({ targets: [] });
+  }
+
+  await actionUse.executeScriptCalls("postUse");
+  Hooks.callAll("pf1PostActionUse", actionUse, shared.message ?? null);
+
+  if (trackerResult === "cancelled") {
+    console.debug('PF1 | Sequential full attack "%s (%s)" cancelled after partial resolution.', item.name, action.name);
+    return actionUse;
   }
 
   console.debug('PF1 | Sequential full attack "%s (%s)" completed.', item.name, action.name);
@@ -225,6 +231,8 @@ class SequentialAttackTracker {
     this.currentIndex = 0;
     this.resolvedIndices = new Set();
     this.skippedIndices = new Set();
+    this.sequenceStarted = false;
+    this.sequenceResolvedAny = false;
     this.dialog = null;
     this._resolve = null; // Promise resolve callback
   }
@@ -418,7 +426,7 @@ class SequentialAttackTracker {
       let powerAttackBonus = (1 + Math.floor(rollData.attributes.bab.total / 4)) * basePowerAttackBonus;
       const paMult = action.getPowerAttackMult({ rollData });
       powerAttackBonus = Math.floor(powerAttackBonus * paMult);
-      const powerAttackPenalty = -(1 + Math.floor(rollData.bab / 4));
+      const powerAttackPenalty = -(1 + Math.floor(rollData.attributes.bab.total / 4));
       rollData.powerAttackBonus = powerAttackBonus;
       rollData.powerAttackPenalty = powerAttackPenalty;
     } else {
@@ -451,11 +459,9 @@ class SequentialAttackTracker {
 
     // ---- Roll this single attack ---- //
 
-    // Temporarily isolate shared data to a single attack
+    // Preserve the routine-level shared state until the one-time use lifecycle has run.
     const origAttacks = shared.attacks;
     const origChatAttacks = shared.chatAttacks;
-    shared.attacks = [atk];
-    shared.chatAttacks = [];
 
     const conditionalParts = actionUse._getConditionalParts(atk, { index: idx });
     rollData.attackCount = idx;
@@ -535,48 +541,70 @@ class SequentialAttackTracker {
     shared.templateData.footnotes = [];
     await actionUse.addFootnotes();
 
-    // Fire the pre-action-use hook (per attack)
-    // Modules can return false to skip this attack's chat card
-    const hookResult = Hooks.call("pf1PreActionUse", actionUse);
+    const isFirstResolvedAttack = !this.sequenceStarted;
+    shared.sequentialAttack = {
+      index: idx,
+      total: this.allAttacks.length,
+      isFirst: isFirstResolvedAttack,
+      isLast: idx === this.allAttacks.length - 1,
+    };
 
-    if (hookResult !== false) {
-      // Script calls
-      await actionUse.executeScriptCalls();
-
-      if (!shared.scriptData?.reject) {
-        // Subtract ammo for this single attack
-        const ammoCost = action.ammo.cost;
-        if (ammoCost !== 0 && atk.hasAmmo) {
-          await _subtractSingleAttackAmmo(actionUse, atk, ammoCost);
-        }
-
-        // Subtract charges for this attack
-        if (atk.chargeCost && atk.chargeCost > 0) {
-          shared.totalChargeCost = atk.chargeCost;
-          await item.addCharges(-atk.chargeCost);
-        }
-
-        // Self-charged action uses (only on first attack)
-        if (idx === 0 && action.isSelfCharged) {
-          await action.update({ "uses.self.value": action.uses.self.value - 1 });
-        }
-
-        // Update remaining ammo display
-        actionUse.updateAmmoUsage();
-
-        // Handle Dice So Nice
-        await actionUse.handleDiceSoNice();
-
-        // Build and post the chat card for this single attack
-        await actionUse.getMessageData();
-        await actionUse.postMessage();
-
-        // Post-use script calls
-        await actionUse.executeScriptCalls("postUse");
-
-        Hooks.callAll("pf1PostActionUse", actionUse, shared.message ?? null);
+    if (isFirstResolvedAttack) {
+      const hookResult = Hooks.call("pf1PreActionUse", actionUse);
+      if (hookResult === false) {
+        shared.chatAttacks = origChatAttacks;
+        delete rollData.attackCount;
+        this._completed = true;
+        this._resolve("cancelled");
+        this.dialog?.close();
+        return;
       }
+
+      await actionUse.executeScriptCalls();
+      if (shared.scriptData?.reject) {
+        shared.chatAttacks = origChatAttacks;
+        delete rollData.attackCount;
+        this._completed = true;
+        this._resolve("cancelled");
+        this.dialog?.close();
+        return;
+      }
+
+      this.sequenceStarted = true;
     }
+
+    // Temporarily isolate shared data to a single attack for message generation.
+    shared.attacks = [atk];
+
+    // Subtract ammo for this single attack
+    const ammoCost = action.ammo.cost;
+    if (ammoCost !== 0 && atk.hasAmmo) {
+      await _subtractSingleAttackAmmo(actionUse, atk, ammoCost);
+    }
+
+    // Subtract charges for this attack
+    if (atk.chargeCost && atk.chargeCost > 0) {
+      shared.totalChargeCost = atk.chargeCost;
+      await item.addCharges(-atk.chargeCost);
+    }
+
+    // Self-charged action uses (only on first resolved attack)
+    if (isFirstResolvedAttack && action.isSelfCharged) {
+      await action.update({ "uses.self.value": action.uses.self.value - 1 });
+    }
+
+    // Update remaining ammo display
+    actionUse.updateAmmoUsage();
+
+    // Handle Dice So Nice
+    await actionUse.handleDiceSoNice();
+
+    // Build and optionally post the chat card for this single attack
+    await actionUse.getMessageData();
+    if (shared.scriptData?.hideChat !== true) {
+      await actionUse.postMessage();
+    }
+    this.sequenceResolvedAny = true;
 
     // Restore shared arrays
     shared.attacks = origAttacks;
