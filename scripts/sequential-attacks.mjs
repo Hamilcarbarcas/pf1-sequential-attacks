@@ -105,6 +105,12 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
 
   const shared = actionUse.shared;
 
+  // Check if a pre-use script (e.g. pf1-new-script-hooks) set the reject flag
+  if (shared.reject) {
+    console.debug("PF1 | Sequential attack rejected by script call (shared.reject).");
+    return;
+  }
+
   // ---- Phase 2: Does this qualify for sequential? ---- //
   // Check the dialog result WITHOUT calling alterRollData yet — that method pushes
   // to shared.attackBonus/damageBonus, and calling it here would cause double-counting
