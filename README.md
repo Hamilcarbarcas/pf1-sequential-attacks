@@ -8,7 +8,7 @@ A Foundry VTT module that allows full attacks to be resolved one attack at a tim
 
 ## Features
 
-![Example attack control window](assets/attacks-window-screenshot)
+![Example attack control window](assets/attacks-window-screenshot.png)
 
 - **Sequential Attack Resolution**: Roll each attack in a full attack sequence individually
 - **Visual Tracker**: Dialog displays all attacks in the sequence with status indicators:
