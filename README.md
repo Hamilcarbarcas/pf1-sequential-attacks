@@ -2,7 +2,7 @@
 
 A Foundry VTT module that allows full attacks to be resolved one attack at a time instead of all at once.
 
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Foundry VTT Compatibility:** v13  
 **Manifest URL:** `https://github.com/Hamilcarbarcas/pf1-sequential-attacks/releases/latest/download/module.json`
 
