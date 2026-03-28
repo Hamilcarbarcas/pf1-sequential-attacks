@@ -30,7 +30,7 @@
 .seq-attack-title {
   font-weight: bold;
   font-size: 13px;
-  color: var(--color-text-light-highlight, #eee);
+  color: #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

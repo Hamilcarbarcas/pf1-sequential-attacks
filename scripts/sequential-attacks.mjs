@@ -105,6 +105,12 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
 
   const shared = actionUse.shared;
 
+  // Check if a pre-use script (e.g. pf1-new-script-hooks) set the reject flag
+  if (shared.reject) {
+    console.debug("PF1 | Sequential attack rejected by script call (shared.reject).");
+    return;
+  }
+
   // ---- Phase 2: Does this qualify for sequential? ---- //
   // Check the dialog result WITHOUT calling alterRollData yet — that method pushes
   // to shared.attackBonus/damageBonus, and calling it here would cause double-counting
@@ -130,6 +136,12 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   // over the roll-and-post cycle. For weapon attacks (the primary use case)
   // this is fine — Nevela's only runs custom logic for spells/consumables/classFeats,
   // and those rarely have multi-attack full attacks.
+
+  // Snapshot the bonus arrays BEFORE alterRollData pushes to them.
+  // This lets the "Edit Options" button reset and cleanly re-apply.
+  shared._preAlterAttackBonus = [...shared.attackBonus];
+  shared._preAlterDamageBonus = [...shared.damageBonus];
+
   actionUse.formData = form;
   shared.formData = form;
   await actionUse.alterRollData(form);
@@ -195,14 +207,12 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   // Show the tracker dialog (non-blocking — we drive it with promises)
   const trackerResult = await tracker.run();
 
-  if (trackerResult === "cancelled") {
-    // Clean up any placed templates
+  if (!tracker.sequenceResolvedAny) {
     await measureTemplate?.delete();
-    console.debug("PF1 | Sequential attack cancelled by user.");
+    console.debug("PF1 | Sequential attack ended before any attacks were resolved.");
     return;
   }
 
-  // Deselect targets after all attacks
   if (game.settings.get("pf1", "clearTargetsAfterAttack") && game.user.targets.size) {
     if (game.release.generation >= 13) {
       game.user._onUpdateTokenTargets([]);
@@ -210,6 +220,14 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
       game.user.updateTokenTargets([]);
     }
     game.user.broadcastActivity({ targets: [] });
+  }
+
+  await actionUse.executeScriptCalls("postUse");
+  Hooks.callAll("pf1PostActionUse", actionUse, shared.message ?? null);
+
+  if (trackerResult === "cancelled") {
+    console.debug('PF1 | Sequential full attack "%s (%s)" cancelled after partial resolution.', item.name, action.name);
+    return actionUse;
   }
 
   console.debug('PF1 | Sequential full attack "%s (%s)" completed.', item.name, action.name);
@@ -225,6 +243,8 @@ class SequentialAttackTracker {
     this.currentIndex = 0;
     this.resolvedIndices = new Set();
     this.skippedIndices = new Set();
+    this.sequenceStarted = false;
+    this.sequenceResolvedAny = false;
     this.dialog = null;
     this._resolve = null; // Promise resolve callback
   }
@@ -334,6 +354,7 @@ class SequentialAttackTracker {
       const btnIcon = isLast ? "fas fa-flag-checkered" : "fas fa-dice-d20";
       html += `<button type="button" class="seq-next-btn"><i class="${btnIcon}"></i> ${btnLabel}</button>`;
       html += `<button type="button" class="seq-skip-btn"><i class="fas fa-forward"></i> Skip</button>`;
+      html += `<button type="button" class="seq-edit-btn"><i class="fas fa-sliders-h"></i> Edit Options</button>`;
       html += `<button type="button" class="seq-cancel-btn"><i class="fas fa-times"></i> Cancel</button>`;
     } else {
       html += `<button type="button" class="seq-close-btn"><i class="fas fa-check"></i> Done</button>`;
@@ -363,6 +384,20 @@ class SequentialAttackTracker {
     html.find(".seq-skip-btn").off("click").on("click", (ev) => {
       ev.preventDefault();
       this._skipCurrentAttack();
+    });
+
+    html.find(".seq-edit-btn").off("click").on("click", async (ev) => {
+      ev.preventDefault();
+      const btn = $(ev.currentTarget);
+      btn.prop("disabled", true).addClass("seq-btn-working");
+      try {
+        await this._editOptions();
+      } catch (err) {
+        console.error("pf1-sequential-attacks | Error editing options:", err);
+        ui.notifications.error("Error editing attack options. Check console.");
+      } finally {
+        btn.prop("disabled", false).removeClass("seq-btn-working");
+      }
     });
 
     html.find(".seq-cancel-btn").off("click").on("click", (ev) => {
@@ -409,16 +444,21 @@ class SequentialAttackTracker {
       shared.attackBonus = shared.attackBonus.filter((part) => !part?.includes?.(chargeTag));
     }
 
-    // Re-apply the form-based alterations (power attack, conditionals, etc.)
+    // Re-apply the form-based alterations (power attack, d20 override, conditionals, etc.)
     // We need to re-run alterRollData with the saved form data since getRollData() resets rollData
     // but we need to preserve the state. We selectively re-apply key values.
     rollData.fullAttack = shared.fullAttack ? 1 : 0;
+
+    // Restore d20 check override (e.g. "11" to force all attack rolls to 11)
+    if (shared.formData?.["d20"]) {
+      rollData.d20 = shared.formData["d20"];
+    }
     if (shared.powerAttack) {
       const basePowerAttackBonus = rollData.action?.powerAttack?.damageBonus ?? 2;
       let powerAttackBonus = (1 + Math.floor(rollData.attributes.bab.total / 4)) * basePowerAttackBonus;
       const paMult = action.getPowerAttackMult({ rollData });
       powerAttackBonus = Math.floor(powerAttackBonus * paMult);
-      const powerAttackPenalty = -(1 + Math.floor(rollData.bab / 4));
+      const powerAttackPenalty = -(1 + Math.floor(rollData.attributes.bab.total / 4));
       rollData.powerAttackBonus = powerAttackBonus;
       rollData.powerAttackPenalty = powerAttackPenalty;
     } else {
@@ -451,11 +491,9 @@ class SequentialAttackTracker {
 
     // ---- Roll this single attack ---- //
 
-    // Temporarily isolate shared data to a single attack
+    // Preserve the routine-level shared state until the one-time use lifecycle has run.
     const origAttacks = shared.attacks;
     const origChatAttacks = shared.chatAttacks;
-    shared.attacks = [atk];
-    shared.chatAttacks = [];
 
     const conditionalParts = actionUse._getConditionalParts(atk, { index: idx });
     rollData.attackCount = idx;
@@ -535,48 +573,79 @@ class SequentialAttackTracker {
     shared.templateData.footnotes = [];
     await actionUse.addFootnotes();
 
-    // Fire the pre-action-use hook (per attack)
-    // Modules can return false to skip this attack's chat card
+    const isFirstResolvedAttack = !this.sequenceStarted;
+    shared.sequentialAttack = {
+      index: idx,
+      total: this.allAttacks.length,
+      isFirst: isFirstResolvedAttack,
+      isLast: idx === this.allAttacks.length - 1,
+    };
+
+    // Narrow shared.attacks to just the current attack BEFORE firing hooks,
+    // so that hooks iterating shared.attacks (e.g. fumble confirmation) see
+    // only the current attack with its populated chatAttack.
+    shared.attacks = [atk];
+
+    // Fire pf1PreActionUse for every sequential attack so per-attack hooks
+    // (fumble confirmation, damage footnotes, etc.) run for each attack.
+    // Hooks can check shared.sequentialAttack for sequence context.
     const hookResult = Hooks.call("pf1PreActionUse", actionUse);
-
-    if (hookResult !== false) {
-      // Script calls
-      await actionUse.executeScriptCalls();
-
-      if (!shared.scriptData?.reject) {
-        // Subtract ammo for this single attack
-        const ammoCost = action.ammo.cost;
-        if (ammoCost !== 0 && atk.hasAmmo) {
-          await _subtractSingleAttackAmmo(actionUse, atk, ammoCost);
-        }
-
-        // Subtract charges for this attack
-        if (atk.chargeCost && atk.chargeCost > 0) {
-          shared.totalChargeCost = atk.chargeCost;
-          await item.addCharges(-atk.chargeCost);
-        }
-
-        // Self-charged action uses (only on first attack)
-        if (idx === 0 && action.isSelfCharged) {
-          await action.update({ "uses.self.value": action.uses.self.value - 1 });
-        }
-
-        // Update remaining ammo display
-        actionUse.updateAmmoUsage();
-
-        // Handle Dice So Nice
-        await actionUse.handleDiceSoNice();
-
-        // Build and post the chat card for this single attack
-        await actionUse.getMessageData();
-        await actionUse.postMessage();
-
-        // Post-use script calls
-        await actionUse.executeScriptCalls("postUse");
-
-        Hooks.callAll("pf1PostActionUse", actionUse, shared.message ?? null);
-      }
+    if (hookResult === false) {
+      shared.attacks = origAttacks;
+      shared.chatAttacks = origChatAttacks;
+      delete rollData.attackCount;
+      this._completed = true;
+      this._resolve("cancelled");
+      this.dialog?.close();
+      return;
     }
+
+    // Script calls ("use" category) only run once for the whole sequence,
+    // on the first resolved attack — they handle resource deduction, etc.
+    if (isFirstResolvedAttack) {
+      await actionUse.executeScriptCalls();
+      if (shared.scriptData?.reject) {
+        shared.attacks = origAttacks;
+        shared.chatAttacks = origChatAttacks;
+        delete rollData.attackCount;
+        this._completed = true;
+        this._resolve("cancelled");
+        this.dialog?.close();
+        return;
+      }
+
+      this.sequenceStarted = true;
+    }
+
+    // Subtract ammo for this single attack
+    const ammoCost = action.ammo.cost;
+    if (ammoCost !== 0 && atk.hasAmmo) {
+      await _subtractSingleAttackAmmo(actionUse, atk, ammoCost);
+    }
+
+    // Subtract charges for this attack
+    if (atk.chargeCost && atk.chargeCost > 0) {
+      shared.totalChargeCost = atk.chargeCost;
+      await item.addCharges(-atk.chargeCost);
+    }
+
+    // Self-charged action uses (only on first resolved attack)
+    if (isFirstResolvedAttack && action.isSelfCharged) {
+      await action.update({ "uses.self.value": action.uses.self.value - 1 });
+    }
+
+    // Update remaining ammo display
+    actionUse.updateAmmoUsage();
+
+    // Handle Dice So Nice
+    await actionUse.handleDiceSoNice();
+
+    // Build and optionally post the chat card for this single attack
+    await actionUse.getMessageData();
+    if (shared.scriptData?.hideChat !== true) {
+      await actionUse.postMessage();
+    }
+    this.sequenceResolvedAny = true;
 
     // Restore shared arrays
     shared.attacks = origAttacks;
@@ -596,6 +665,70 @@ class SequentialAttackTracker {
 
     // Update the dialog
     this._updateDialog();
+  }
+
+  /**
+   * Reopen the attack dialog so the user can change options (power attack,
+   * flanking, PBS, d20 override, conditionals, etc.) for remaining attacks.
+   */
+  async _editOptions() {
+    const actionUse = this.actionUse;
+    const shared = actionUse.shared;
+
+    // Save current state for rollback if the user cancels the dialog
+    const savedAttackBonus = [...shared.attackBonus];
+    const savedDamageBonus = [...shared.damageBonus];
+    const savedFormData = shared.formData;
+    const savedFlags = {
+      powerAttack: shared.powerAttack,
+      pointBlankShot: shared.pointBlankShot,
+      flanking: shared.flanking,
+      highGround: shared.highGround,
+      charge: shared.charge,
+    };
+
+    // Reset bonus arrays to the pre-alterRollData snapshot so alterRollData
+    // can cleanly push new values without duplicating previous entries.
+    shared.attackBonus = [...(shared._preAlterAttackBonus ?? [])];
+    shared.damageBonus = [...(shared._preAlterDamageBonus ?? [])];
+    shared.powerAttack = false;
+    shared.pointBlankShot = false;
+    shared.flanking = false;
+    shared.highGround = false;
+    shared.charge = false;
+
+    // Refresh rollData so the dialog reads fresh actor state
+    actionUse.getRollData();
+
+    // Show the edit-options dialog (pre-populated, no attacks table, OK button)
+    const form = await new SequentialEditDialog(actionUse, savedFormData).show();
+
+    if (form) {
+      // Force full attack — we're mid-sequence
+      form.fullAttack = true;
+
+      // Apply the new options
+      shared.formData = form;
+      actionUse.formData = form;
+      await actionUse.alterRollData(form);
+
+      // Re-process conditionals with the new selections
+      await actionUse.handleConditionals();
+
+      console.debug("PF1 | Sequential attack options updated mid-sequence.");
+      this._updateDialog();
+    } else {
+      // Cancelled — restore previous state
+      shared.attackBonus = savedAttackBonus;
+      shared.damageBonus = savedDamageBonus;
+      shared.formData = savedFormData;
+      shared.powerAttack = savedFlags.powerAttack;
+      shared.pointBlankShot = savedFlags.pointBlankShot;
+      shared.flanking = savedFlags.flanking;
+      shared.highGround = savedFlags.highGround;
+      shared.charge = savedFlags.charge;
+      console.debug("PF1 | Sequential attack option edit cancelled.");
+    }
   }
 
   /**
@@ -632,6 +765,75 @@ class SequentialAttackTracker {
         }, 800);
       }
     }
+  }
+}
+
+// ---- Sequential Edit Options Dialog ---- //
+
+/**
+ * Subclass of the PF1 AttackDialog used mid-sequence to let the user change
+ * attack options (power attack, flanking, PBS, d20 override, conditionals, etc.)
+ * between sequential attacks.
+ *
+ * Differences from the standard dialog:
+ *  - Pre-populated with the previous formData selections
+ *  - Attacks table hidden (attack list is already committed)
+ *  - Single "OK" button instead of Single Attack / Full Attack
+ *  - Haste / Rapid Shot / Manyshot toggles don't modify the attack list
+ */
+class SequentialEditDialog extends pf1.applications.AttackDialog {
+  constructor(actionUse, previousFormData, appOptions = {}) {
+    super(actionUse, appOptions);
+
+    const prev = previousFormData ?? {};
+
+    // Pre-populate checkboxes from previous form data
+    const flagKeys = [
+      "power-attack", "primary-attack", "flanking", "highGround", "charge",
+      "haste-attack", "manyshot", "rapid-shot", "point-blank-shot",
+      "measure-template", "cl-check", "concentration",
+    ];
+    for (const key of flagKeys) {
+      if (key in prev) this.flags[key] = !!prev[key];
+    }
+
+    // Pre-populate text / select inputs
+    const attrKeys = [
+      "d20", "attack-bonus", "damage-bonus",
+      "damage-ability-multiplier", "rollMode", "held",
+    ];
+    for (const key of attrKeys) {
+      if (prev[key] != null && prev[key] !== "") {
+        this.attributes[key] = prev[key];
+      }
+    }
+
+    // Pre-populate conditionals
+    for (const key of Object.keys(prev)) {
+      if (key.startsWith("conditionals.") && this.conditionals[key]) {
+        this.conditionals[key].enabled = !!prev[key];
+      }
+    }
+  }
+
+  /** @override — attack list is committed; don't add/remove extra attacks. */
+  _toggleExtraAttack() {}
+
+  get title() {
+    return `Edit Attack Options: ${this.actionUse.item.name}`;
+  }
+
+  /** @override */
+  activateListeners(html) {
+    super.activateListeners(html);
+
+    // Hide the committed attacks table
+    html.find(".attacks").hide();
+
+    // Replace Single Attack / Full Attack with a single "OK" button
+    html.find(`button[name="attack_single"]`).remove();
+    html.find(`button[name="attack_full"]`)
+      .html(`<i class="fas fa-check"></i> OK`);
   }
 }
 
