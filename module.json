@@ -32,7 +32,7 @@
       "type": "system"
     }
   ],
-  "scripts": [
+  "esmodules": [
     "scripts/sequential-attacks.mjs"
   ],
   "styles": [
