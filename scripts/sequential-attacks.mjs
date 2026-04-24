@@ -67,12 +67,14 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
     return wrapped({ skipDialog });
   }
 
-  // Spells, consumables, and class features are rarely used in sequential full attacks
+  // Consumables and class features are rarely used in sequential full attacks
   // and may be handled by other wrappers (e.g. Nevela's Automation Suite) that bypass
   // createAttackDialog(). To avoid double-dialog issues, chain directly for these types.
+  // Note: spells are intentionally allowed through — NAS only intercepts them when
+  // automaticBuffs is enabled; with that setting off it falls through to wrapped() anyway.
   const itemType = actionUse.item?.type;
   const itemSubType = actionUse.item?.subType;
-  if (itemType === "spell" || itemType === "consumable" || (itemType === "feat" && itemSubType === "classFeat")) {
+  if (itemType === "consumable" || (itemType === "feat" && itemSubType === "classFeat")) {
     return wrapped({ skipDialog });
   }
 
