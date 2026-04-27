@@ -98,6 +98,11 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   actionUse.shared.fullAttack = true;
   await actionUse.generateAttacks(true);
 
+  // Initialize first-attack-only arrays before the dialog fires any script calls
+  // (e.g. via pf1PostAttackDialog hooks), so scripts that push to them don't error.
+  actionUse.shared.firstAttackBonus = [];
+  actionUse.shared.firstAttackDamageBonus = [];
+
   // Show the dialog
   const form = await actionUse.createAttackDialog();
   if (!form) {
@@ -500,6 +505,35 @@ class SequentialAttackTracker {
     const conditionalParts = actionUse._getConditionalParts(atk, { index: idx });
     rollData.attackCount = idx;
 
+    const isFirstResolvedAttack = !this.sequenceStarted;
+    shared.sequentialAttack = {
+      index: idx,
+      total: this.allAttacks.length,
+      isFirst: isFirstResolvedAttack,
+      isLast: idx === this.allAttacks.length - 1,
+    };
+
+    // Script calls ("use" category) run once, on the first resolved attack.
+    // Running here — before addAttack — ensures that any bonus pushes from scripts
+    // (e.g. shared.attackBonus.push(...)) are included in the first attack's roll.
+    // Scripts may also push to shared.firstAttackBonus / shared.firstAttackDamageBonus
+    // for bonuses that should apply only to the first attack.
+    if (isFirstResolvedAttack) {
+      shared.firstAttackBonus ??= [];
+      shared.firstAttackDamageBonus ??= [];
+      await actionUse.executeScriptCalls();
+      if (shared.scriptData?.reject) {
+        shared.attacks = origAttacks;
+        shared.chatAttacks = origChatAttacks;
+        delete rollData.attackCount;
+        this._completed = true;
+        this._resolve("cancelled");
+        this.dialog?.close();
+        return;
+      }
+      this.sequenceStarted = true;
+    }
+
     // Create ChatAttack
     const chatAttack = new pf1.actionUse.ChatAttack(action, {
       label: atk.label,
@@ -509,8 +543,24 @@ class SequentialAttackTracker {
     });
 
     if (atk.type !== "manyshot") {
+      // PF1's addAttack filter removes "0" but not "(0)" — extra attacks with no configured
+      // bonus formula get bonus:"(0)", which slips through and renders as "+0 [undefined]".
+      // Strip outer parens from the unflaired value and skip it if it reduces to "0".
+      const rawAtkBonus = atk.attackBonus;
+      const atkBonusPart = (() => {
+        if (!rawAtkBonus || rawAtkBonus == 0) return rawAtkBonus;
+        if (typeof rawAtkBonus === 'string') {
+          const bare = pf1.utils.formula.unflair(rawAtkBonus).replace(/[\s()]/g, '');
+          if (bare === '0') return undefined;
+        }
+        return rawAtkBonus;
+      })();
       await chatAttack.addAttack({
-        extraParts: [...shared.attackBonus, atk.attackBonus],
+        extraParts: [
+          ...shared.attackBonus,
+          ...(isFirstResolvedAttack ? (shared.firstAttackBonus ?? []) : []),
+          atkBonusPart,
+        ],
         conditionalParts,
       });
     }
@@ -518,6 +568,9 @@ class SequentialAttackTracker {
     // Add damage
     if (action.hasDamage) {
       const extraParts = foundry.utils.deepClone(shared.damageBonus);
+      if (isFirstResolvedAttack && shared.firstAttackDamageBonus?.length) {
+        extraParts.push(...shared.firstAttackDamageBonus);
+      }
       const nonCritParts = [];
       const critParts = [];
 
@@ -575,14 +628,6 @@ class SequentialAttackTracker {
     shared.templateData.footnotes = [];
     await actionUse.addFootnotes();
 
-    const isFirstResolvedAttack = !this.sequenceStarted;
-    shared.sequentialAttack = {
-      index: idx,
-      total: this.allAttacks.length,
-      isFirst: isFirstResolvedAttack,
-      isLast: idx === this.allAttacks.length - 1,
-    };
-
     // Narrow shared.attacks to just the current attack BEFORE firing hooks,
     // so that hooks iterating shared.attacks (e.g. fumble confirmation) see
     // only the current attack with its populated chatAttack.
@@ -600,23 +645,6 @@ class SequentialAttackTracker {
       this._resolve("cancelled");
       this.dialog?.close();
       return;
-    }
-
-    // Script calls ("use" category) only run once for the whole sequence,
-    // on the first resolved attack — they handle resource deduction, etc.
-    if (isFirstResolvedAttack) {
-      await actionUse.executeScriptCalls();
-      if (shared.scriptData?.reject) {
-        shared.attacks = origAttacks;
-        shared.chatAttacks = origChatAttacks;
-        delete rollData.attackCount;
-        this._completed = true;
-        this._resolve("cancelled");
-        this.dialog?.close();
-        return;
-      }
-
-      this.sequenceStarted = true;
     }
 
     // Subtract ammo for this single attack
