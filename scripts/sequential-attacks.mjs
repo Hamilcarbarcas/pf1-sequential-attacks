@@ -67,12 +67,14 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
     return wrapped({ skipDialog });
   }
 
-  // Spells, consumables, and class features are rarely used in sequential full attacks
+  // Consumables and class features are rarely used in sequential full attacks
   // and may be handled by other wrappers (e.g. Nevela's Automation Suite) that bypass
   // createAttackDialog(). To avoid double-dialog issues, chain directly for these types.
+  // Note: spells are intentionally allowed through — NAS only intercepts them when
+  // automaticBuffs is enabled; with that setting off it falls through to wrapped() anyway.
   const itemType = actionUse.item?.type;
   const itemSubType = actionUse.item?.subType;
-  if (itemType === "spell" || itemType === "consumable" || (itemType === "feat" && itemSubType === "classFeat")) {
+  if (itemType === "consumable" || (itemType === "feat" && itemSubType === "classFeat")) {
     return wrapped({ skipDialog });
   }
 
@@ -95,6 +97,11 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
 
   actionUse.shared.fullAttack = true;
   await actionUse.generateAttacks(true);
+
+  // Initialize first-attack-only arrays before the dialog fires any script calls
+  // (e.g. via pf1PostAttackDialog hooks), so scripts that push to them don't error.
+  actionUse.shared.firstAttackBonus = [];
+  actionUse.shared.firstAttackDamageBonus = [];
 
   // Show the dialog
   const form = await actionUse.createAttackDialog();
@@ -234,10 +241,13 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   return actionUse;
 }
 
-// ---- Sequential Attack Tracker (Dialog) ---- //
+// ---- Sequential Attack Tracker (ApplicationV2) ---- //
 
-class SequentialAttackTracker {
+const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+
+class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(actionUse, allAttacks) {
+    super({});
     this.actionUse = actionUse;
     this.allAttacks = allAttacks;
     this.currentIndex = 0;
@@ -245,198 +255,202 @@ class SequentialAttackTracker {
     this.skippedIndices = new Set();
     this.sequenceStarted = false;
     this.sequenceResolvedAny = false;
-    this.dialog = null;
-    this._resolve = null; // Promise resolve callback
+    this._completed = false;
+    this._resolved = false;      // Promise settled?
+    this._busy = false;          // an async action is in flight
+    this._autoCloseTimer = null; // auto-close timer once the sequence completes
+    this._resolve = null;        // Promise resolve callback
+  }
+
+  static DEFAULT_OPTIONS = {
+    id: "pf1-sequential-attack-tracker",
+    classes: ["pf1-sequential-attacks", "sequential-attack-tracker-app"],
+    tag: "div",
+    window: {
+      title: "Sequential Attack",
+      icon: "fa-solid fa-crosshairs",
+      resizable: false,
+      minimizable: false,
+    },
+    position: { width: 360, height: "auto" },
+    actions: {
+      rollNext: SequentialAttackTracker.#onRollNext,
+      rollAll: SequentialAttackTracker.#onRollAll,
+      skip: SequentialAttackTracker.#onSkip,
+      editOptions: SequentialAttackTracker.#onEditOptions,
+      cancel: SequentialAttackTracker.#onCancel,
+      done: SequentialAttackTracker.#onDone,
+    },
+  };
+
+  static PARTS = {
+    body: { template: "modules/pf1-sequential-attacks/templates/attack-tracker.hbs" },
+  };
+
+  /** @override — dynamic title with the item name. */
+  get title() {
+    return `Sequential Attack: ${this.actionUse.item.name}`;
   }
 
   /**
-   * Opens the tracker dialog and runs the sequential loop.
+   * Opens the tracker window and runs the sequential loop.
    * @returns {Promise<string>} "completed" or "cancelled"
    */
   async run() {
     return new Promise((resolve) => {
       this._resolve = resolve;
-      this._renderDialog();
+      this.render(true);
     });
   }
 
-  _renderDialog() {
-    const content = this._buildHTML();
-
-    if (this.dialog) {
-      // Update existing dialog content
-      const inner = this.dialog.element?.find?.(".sequential-attack-tracker");
-      if (inner?.length) {
-        inner.replaceWith(this._buildTrackerBody());
-        this._activateListeners(this.dialog.element);
-        return;
-      }
-    }
-
-    this.dialog = new Dialog(
-      {
-        title: `Sequential Attack: ${this.actionUse.item.name}`,
-        content,
-        buttons: {},
-        close: () => {
-          // If closed before completing all attacks, treat as cancel
-          if (!this._completed) {
-            this._resolve("cancelled");
-          }
-        },
-      },
-      {
-        classes: ["sequential-attack-dialog"],
-        width: 340,
-        height: "auto",
-        resizable: false,
-      }
-    );
-
-    this.dialog.render(true);
-
-    // Wait for the dialog to actually render before attaching listeners
-    Hooks.once("renderDialog", (app) => {
-      if (app === this.dialog) {
-        this._activateListeners(app.element);
-      }
-    });
-  }
-
-  _buildHTML() {
-    return this._buildTrackerBody();
-  }
-
-  _buildTrackerBody() {
+  /** @override */
+  async _prepareContext(options) {
     const attacks = this.allAttacks;
-    let html = `<div class="sequential-attack-tracker">`;
-    html += `<div class="seq-attack-header">`;
-    html += `<span class="seq-attack-title">${this.actionUse.item.name} — ${this.actionUse.action.name}</span>`;
-    const nextAttack = this._completed ? attacks.length : this.currentIndex + 1;
-    html += `<span class="seq-attack-progress">${nextAttack} / ${attacks.length}</span>`;
-    html += `</div>`;
+    const rollData = this.actionUse.shared.rollData;
 
-    html += `<div class="seq-attack-list">`;
-    for (let i = 0; i < attacks.length; i++) {
-      const atk = attacks[i];
+    const rows = attacks.map((atk, i) => {
       const isResolved = this.resolvedIndices.has(i);
       const isSkipped = this.skippedIndices.has(i);
       const isCurrent = i === this.currentIndex && !this._completed;
 
-      let statusClass = "seq-pending";
-      let icon = `<i class="fas fa-circle-notch"></i>`;
+      let status = "pending";
+      let icon = "fa-circle-notch";
       if (isSkipped) {
-        statusClass = "seq-skipped";
-        icon = `<i class="fas fa-forward"></i>`;
+        status = "skipped";
+        icon = "fa-forward";
       } else if (isResolved) {
-        statusClass = "seq-resolved";
-        icon = `<i class="fas fa-check-circle"></i>`;
+        status = "resolved";
+        icon = "fa-check-circle";
       } else if (isCurrent) {
-        statusClass = "seq-current";
-        icon = `<i class="fas fa-crosshairs"></i>`;
+        status = "current";
+        icon = "fa-crosshairs";
       }
 
-      const bonusTotal = pf1.dice.RollPF.safeRollSync(atk.attackBonus, this.actionUse.shared.rollData, undefined, undefined, { minimize: true }).total ?? 0;
-      const bonusStr = bonusTotal >= 0 ? `+${bonusTotal}` : `${bonusTotal}`;
-      html += `<div class="seq-attack-row ${statusClass}">`;
-      html += `  <span class="seq-attack-icon">${icon}</span>`;
-      html += `  <span class="seq-attack-label">${atk.label}</span>`;
-      html += `  <span class="seq-attack-bonus">${bonusStr}</span>`;
-      html += `</div>`;
-    }
-    html += `</div>`;
+      const bonusTotal =
+        pf1.dice.RollPF.safeRollSync(atk.attackBonus, rollData, undefined, undefined, { minimize: true }).total ?? 0;
+      const bonus = bonusTotal >= 0 ? `+${bonusTotal}` : `${bonusTotal}`;
 
-    // Buttons
-    html += `<div class="seq-attack-buttons">`;
-    if (!this._completed) {
-      const isLast = this.currentIndex === attacks.length - 1;
-      const btnLabel = isLast ? "Roll Final Attack" : "Roll Next Attack";
-      const btnIcon = isLast ? "fas fa-flag-checkered" : "fas fa-dice-d20";
-      html += `<button type="button" class="seq-next-btn"><i class="${btnIcon}"></i> ${btnLabel}</button>`;
-      html += `<button type="button" class="seq-skip-btn"><i class="fas fa-forward"></i> Skip</button>`;
-      html += `<button type="button" class="seq-edit-btn"><i class="fas fa-sliders-h"></i> Edit Options</button>`;
-      html += `<button type="button" class="seq-cancel-btn"><i class="fas fa-times"></i> Cancel</button>`;
-    } else {
-      html += `<button type="button" class="seq-close-btn"><i class="fas fa-check"></i> Done</button>`;
-    }
-    html += `</div>`;
+      return { label: atk.label, status, icon, bonus };
+    });
 
-    html += `</div>`;
-    return html;
+    const remainingCount = attacks.length - this.currentIndex;
+    const isLast = this.currentIndex === attacks.length - 1;
+
+    return {
+      itemName: this.actionUse.item.name,
+      actionName: this.actionUse.action.name,
+      progress: `${this._completed ? attacks.length : this.currentIndex + 1} / ${attacks.length}`,
+      rows,
+      completed: this._completed,
+      // "Roll All Remaining" only makes sense with 2+ attacks left — with one left,
+      // "Roll Final Attack" already produces the same single-attack card.
+      showRollAll: !this._completed && remainingCount >= 2,
+      remainingCount,
+      nextLabel: isLast ? "Roll Final Attack" : "Roll Next Attack",
+      nextIcon: isLast ? "fa-flag-checkered" : "fa-dice-d20",
+    };
   }
 
-  _activateListeners(html) {
-    html.find(".seq-next-btn").off("click").on("click", async (ev) => {
-      ev.preventDefault();
-      const btn = $(ev.currentTarget);
-      btn.prop("disabled", true).addClass("seq-btn-working");
+  /** @override — schedule an auto-close once the whole sequence has resolved. */
+  _onRender(context, options) {
+    super._onRender(context, options);
+    if (this._completed && !this._autoCloseTimer && !this._resolved) {
+      // Small delay so the user can see the final state.
+      this._autoCloseTimer = setTimeout(() => this._finish("completed"), 800);
+    }
+  }
 
-      try {
-        await this._resolveCurrentAttack();
-      } catch (err) {
-        console.error("pf1-sequential-attacks | Error resolving sequential attack:", err);
-        ui.notifications.error("Error resolving attack. Check console.");
-      } finally {
-        btn.prop("disabled", false).removeClass("seq-btn-working");
-      }
-    });
+  /** @override — closing before completion is treated as a cancel. */
+  async close(options) {
+    if (this._autoCloseTimer) {
+      clearTimeout(this._autoCloseTimer);
+      this._autoCloseTimer = null;
+    }
+    if (!this._resolved) {
+      this._resolved = true;
+      this._resolve?.("cancelled");
+    }
+    return super.close(options);
+  }
 
-    html.find(".seq-skip-btn").off("click").on("click", (ev) => {
-      ev.preventDefault();
-      this._skipCurrentAttack();
-    });
-
-    html.find(".seq-edit-btn").off("click").on("click", async (ev) => {
-      ev.preventDefault();
-      const btn = $(ev.currentTarget);
-      btn.prop("disabled", true).addClass("seq-btn-working");
-      try {
-        await this._editOptions();
-      } catch (err) {
-        console.error("pf1-sequential-attacks | Error editing options:", err);
-        ui.notifications.error("Error editing attack options. Check console.");
-      } finally {
-        btn.prop("disabled", false).removeClass("seq-btn-working");
-      }
-    });
-
-    html.find(".seq-cancel-btn").off("click").on("click", (ev) => {
-      ev.preventDefault();
-      this._completed = true;
-      this._resolve("cancelled");
-      this.dialog.close();
-    });
-
-    html.find(".seq-close-btn").off("click").on("click", (ev) => {
-      ev.preventDefault();
-      this._completed = true;
-      this.dialog.close();
-      this._resolve("completed");
-    });
+  /** Settle the run() promise and close the window (idempotent). */
+  _finish(result) {
+    if (this._resolved) return;
+    this._resolved = true;
+    this._resolve?.(result);
+    this.close();
   }
 
   /**
-   * Resolve the current attack: re-prepare the actor, roll the single attack, and post its chat card.
+   * Wrap an async action so it can't be double-invoked and surfaces errors.
+   * The clicked button is disabled synchronously; the work re-renders on completion.
    */
-  async _resolveCurrentAttack() {
-    const idx = this.currentIndex;
+  async #runAction(target, fn, errMsg) {
+    if (this._busy) return;
+    this._busy = true;
+    if (target) target.disabled = true;
+    try {
+      await fn.call(this);
+    } catch (err) {
+      console.error(`pf1-sequential-attacks | ${errMsg}`, err);
+      ui.notifications.error(`${errMsg} Check console.`);
+      if (this.rendered) this.render();
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  // ---- Actions ---- //
+
+  static #onRollNext(event, target) {
+    return this.#runAction(target, this._resolveCurrentAttack, "Error resolving attack.");
+  }
+
+  static #onRollAll(event, target) {
+    return this.#runAction(target, this._resolveAllRemaining, "Error resolving remaining attacks.");
+  }
+
+  static #onSkip(event, target) {
+    this._skipCurrentAttack();
+  }
+
+  static #onEditOptions(event, target) {
+    return this.#runAction(target, this._editOptions, "Error editing attack options.");
+  }
+
+  static #onCancel(event, target) {
+    this._completed = true;
+    this._finish("cancelled");
+  }
+
+  static #onDone(event, target) {
+    this._completed = true;
+    this._finish("completed");
+  }
+
+  /**
+   * Refresh rollData and re-apply the dialog's options so attacks rolled from this point
+   * reflect the current actor state. Shared by the one-at-a-time and batch resolution paths.
+   *
+   * @param {number} startIdx - Index of the first attack about to be rolled. Used to decide
+   *   whether the one-shot charge bonus still applies (only the very first attack benefits).
+   */
+  async _prepareSequenceRollData(startIdx) {
     const actionUse = this.actionUse;
     const shared = actionUse.shared;
     const action = actionUse.action;
-    const item = actionUse.item;
-    const atk = this.allAttacks[idx];
 
     // Refresh rollData to pick up any updated actor stats (buffs toggled between attacks, etc.)
     // Note: We do NOT call actor.prepareData() here — the vanilla flow never does, and doing so
     // causes duplicate resource warnings and can corrupt derived data (e.g. actor size).
     // Foundry automatically re-prepares actors when their data changes (buff toggles, etc.),
-    // so getRollData({ cache: false }) already picks up the latest state.
+    // so getRollData() already picks up the latest state.
     actionUse.getRollData();
     const rollData = shared.rollData;
 
     // If charge was selected in the dialog, only the first attack should benefit.
     // Clear the selection and remove the charge bonus for all subsequent attacks.
-    if (idx > 0 && shared.formData?.charge) {
+    if (startIdx > 0 && shared.formData?.charge) {
       shared.formData.charge = false;
       shared.charge = false;
       const chargeLabel = game.i18n.localize("PF1.Charge");
@@ -488,17 +502,42 @@ class SequentialAttackTracker {
 
     // Collect current targets
     await actionUse.getTargets();
+  }
 
-    // ---- Roll this single attack ---- //
+  /**
+   * Run the "use"-category script calls once for the sequence. Initializes the
+   * first-attack-only bonus arrays so scripts can push to them.
+   *
+   * @returns {Promise<boolean>} false if a script rejected the action (sequence should abort).
+   */
+  async _runUseScripts() {
+    const shared = this.actionUse.shared;
+    shared.firstAttackBonus ??= [];
+    shared.firstAttackDamageBonus ??= [];
+    await this.actionUse.executeScriptCalls();
+    if (shared.scriptData?.reject) return false;
+    this.sequenceStarted = true;
+    return true;
+  }
 
-    // Preserve the routine-level shared state until the one-time use lifecycle has run.
-    const origAttacks = shared.attacks;
-    const origChatAttacks = shared.chatAttacks;
+  /**
+   * Build a single ChatAttack (attack roll, damage, ammo, effect notes) for one attack.
+   * Used both for one-at-a-time resolution and for assembling the all-remaining card.
+   *
+   * @param {object} atk - The attack entry from shared.attacks.
+   * @param {number} idx - The attack's index in the full sequence (drives conditionals / attackCount).
+   * @param {boolean} applyFirstAttackBonuses - Whether first-attack-only bonuses apply to this attack.
+   * @returns {Promise<ChatAttack>}
+   */
+  async _buildChatAttack(atk, idx, applyFirstAttackBonuses) {
+    const actionUse = this.actionUse;
+    const shared = actionUse.shared;
+    const action = actionUse.action;
+    const rollData = shared.rollData;
 
     const conditionalParts = actionUse._getConditionalParts(atk, { index: idx });
     rollData.attackCount = idx;
 
-    // Create ChatAttack
     const chatAttack = new pf1.actionUse.ChatAttack(action, {
       label: atk.label,
       rollData,
@@ -507,8 +546,24 @@ class SequentialAttackTracker {
     });
 
     if (atk.type !== "manyshot") {
+      // PF1's addAttack filter removes "0" but not "(0)" — extra attacks with no configured
+      // bonus formula get bonus:"(0)", which slips through and renders as "+0 [undefined]".
+      // Strip outer parens from the unflaired value and skip it if it reduces to "0".
+      const rawAtkBonus = atk.attackBonus;
+      const atkBonusPart = (() => {
+        if (!rawAtkBonus || rawAtkBonus == 0) return rawAtkBonus;
+        if (typeof rawAtkBonus === 'string') {
+          const bare = pf1.utils.formula.unflair(rawAtkBonus).replace(/[\s()]/g, '');
+          if (bare === '0') return undefined;
+        }
+        return rawAtkBonus;
+      })();
       await chatAttack.addAttack({
-        extraParts: [...shared.attackBonus, atk.attackBonus],
+        extraParts: [
+          ...shared.attackBonus,
+          ...(applyFirstAttackBonuses ? (shared.firstAttackBonus ?? []) : []),
+          atkBonusPart,
+        ],
         conditionalParts,
       });
     }
@@ -516,6 +571,9 @@ class SequentialAttackTracker {
     // Add damage
     if (action.hasDamage) {
       const extraParts = foundry.utils.deepClone(shared.damageBonus);
+      if (applyFirstAttackBonuses && shared.firstAttackDamageBonus?.length) {
+        extraParts.push(...shared.firstAttackDamageBonus);
+      }
       const nonCritParts = [];
       const critParts = [];
 
@@ -547,7 +605,6 @@ class SequentialAttackTracker {
       }
     }
 
-    shared.chatAttacks = [chatAttack];
     atk.chatAttack = chatAttack;
 
     // Fill in ammo details
@@ -560,18 +617,34 @@ class SequentialAttackTracker {
       }
     }
 
-    // Save DC
-    shared.save = action.save.type;
-    shared.saveDC = action.getDC(rollData);
-
     // Effect notes for this attack
     if (atk.type !== "manyshot") {
       await chatAttack.addEffectNotes({ rollData });
     }
 
-    // Reset footnotes and template data for this attack's card
-    shared.templateData.footnotes = [];
-    await actionUse.addFootnotes();
+    delete rollData.attackCount;
+
+    return chatAttack;
+  }
+
+  /**
+   * Resolve the current attack: re-prepare the actor, roll the single attack, and post its chat card.
+   */
+  async _resolveCurrentAttack() {
+    const idx = this.currentIndex;
+    const actionUse = this.actionUse;
+    const shared = actionUse.shared;
+    const action = actionUse.action;
+    const item = actionUse.item;
+    const atk = this.allAttacks[idx];
+
+    // Refresh rollData + re-apply dialog options for this attack's actor state.
+    await this._prepareSequenceRollData(idx);
+    const rollData = shared.rollData;
+
+    // Preserve the routine-level shared state until the one-time use lifecycle has run.
+    const origAttacks = shared.attacks;
+    const origChatAttacks = shared.chatAttacks;
 
     const isFirstResolvedAttack = !this.sequenceStarted;
     shared.sequentialAttack = {
@@ -580,6 +653,30 @@ class SequentialAttackTracker {
       isFirst: isFirstResolvedAttack,
       isLast: idx === this.allAttacks.length - 1,
     };
+
+    // Script calls ("use" category) run once, on the first resolved attack.
+    // Running here — before addAttack — ensures that any bonus pushes from scripts
+    // (e.g. shared.attackBonus.push(...)) are included in the first attack's roll.
+    if (isFirstResolvedAttack) {
+      if (!(await this._runUseScripts())) {
+        shared.attacks = origAttacks;
+        shared.chatAttacks = origChatAttacks;
+        this._finish("cancelled");
+        return;
+      }
+    }
+
+    // Build the ChatAttack for this single attack.
+    const chatAttack = await this._buildChatAttack(atk, idx, isFirstResolvedAttack);
+    shared.chatAttacks = [chatAttack];
+
+    // Save DC
+    shared.save = action.save.type;
+    shared.saveDC = action.getDC(rollData);
+
+    // Reset footnotes and template data for this attack's card
+    shared.templateData.footnotes = [];
+    await actionUse.addFootnotes();
 
     // Narrow shared.attacks to just the current attack BEFORE firing hooks,
     // so that hooks iterating shared.attacks (e.g. fumble confirmation) see
@@ -593,28 +690,8 @@ class SequentialAttackTracker {
     if (hookResult === false) {
       shared.attacks = origAttacks;
       shared.chatAttacks = origChatAttacks;
-      delete rollData.attackCount;
-      this._completed = true;
-      this._resolve("cancelled");
-      this.dialog?.close();
+      this._finish("cancelled");
       return;
-    }
-
-    // Script calls ("use" category) only run once for the whole sequence,
-    // on the first resolved attack — they handle resource deduction, etc.
-    if (isFirstResolvedAttack) {
-      await actionUse.executeScriptCalls();
-      if (shared.scriptData?.reject) {
-        shared.attacks = origAttacks;
-        shared.chatAttacks = origChatAttacks;
-        delete rollData.attackCount;
-        this._completed = true;
-        this._resolve("cancelled");
-        this.dialog?.close();
-        return;
-      }
-
-      this.sequenceStarted = true;
     }
 
     // Subtract ammo for this single attack
@@ -651,9 +728,6 @@ class SequentialAttackTracker {
     shared.attacks = origAttacks;
     shared.chatAttacks = origChatAttacks;
 
-    // Cleanup per-attack rollData
-    delete rollData.attackCount;
-
     // Mark as resolved
     this.resolvedIndices.add(idx);
     this.currentIndex = idx + 1;
@@ -664,7 +738,128 @@ class SequentialAttackTracker {
     }
 
     // Update the dialog
-    this._updateDialog();
+    this.render();
+  }
+
+  /**
+   * Resolve all remaining (not-yet-rolled) attacks at once, posting them together in a single
+   * chat card — i.e. the vanilla PF1 full-attack behaviour for whatever is left in the sequence.
+   *
+   * Unlike one-at-a-time resolution, the actor state is snapshotted once for the whole batch,
+   * so buffs/debuffs toggled between these attacks are NOT picked up individually.
+   */
+  async _resolveAllRemaining() {
+    const actionUse = this.actionUse;
+    const shared = actionUse.shared;
+    const action = actionUse.action;
+    const item = actionUse.item;
+
+    const startIdx = this.currentIndex;
+    const remaining = this.allAttacks.slice(startIdx);
+    if (remaining.length === 0) return;
+
+    // Snapshot actor state once for the whole batch (single-card / vanilla behaviour).
+    await this._prepareSequenceRollData(startIdx);
+    const rollData = shared.rollData;
+
+    // Preserve the routine-level shared state until the one-time use lifecycle has run.
+    const origAttacks = shared.attacks;
+    const origChatAttacks = shared.chatAttacks;
+
+    // This batch covers the first resolved attack only if nothing has been rolled yet.
+    const isFirstResolvedBatch = !this.sequenceStarted;
+    shared.sequentialAttack = {
+      index: startIdx,
+      total: this.allAttacks.length,
+      isFirst: isFirstResolvedBatch,
+      isLast: true,
+      batch: true,
+      count: remaining.length,
+    };
+
+    // Script calls ("use" category) run once for the batch, only if no attack has resolved yet.
+    if (isFirstResolvedBatch) {
+      if (!(await this._runUseScripts())) {
+        shared.attacks = origAttacks;
+        shared.chatAttacks = origChatAttacks;
+        this._finish("cancelled");
+        return;
+      }
+    }
+
+    // Build a ChatAttack for every remaining attack into one card. First-attack-only bonuses
+    // apply only to the very first attack of the entire sequence (i.e. start of an untouched batch).
+    const chatAttacks = [];
+    for (let i = 0; i < remaining.length; i++) {
+      const atk = remaining[i];
+      const idx = startIdx + i;
+      const applyFirstAttackBonuses = isFirstResolvedBatch && i === 0;
+      chatAttacks.push(await this._buildChatAttack(atk, idx, applyFirstAttackBonuses));
+    }
+    shared.chatAttacks = chatAttacks;
+    shared.attacks = remaining;
+
+    // Save DC
+    shared.save = action.save.type;
+    shared.saveDC = action.getDC(rollData);
+
+    // Footnotes (computed once across all attacks in the card)
+    shared.templateData.footnotes = [];
+    await actionUse.addFootnotes();
+
+    // Fire pf1PreActionUse once for the whole card (vanilla fires it once per use).
+    const hookResult = Hooks.call("pf1PreActionUse", actionUse);
+    if (hookResult === false) {
+      shared.attacks = origAttacks;
+      shared.chatAttacks = origChatAttacks;
+      this._finish("cancelled");
+      return;
+    }
+
+    // Subtract ammo and charges per attack.
+    const ammoCost = action.ammo.cost;
+    let batchChargeCost = 0;
+    for (const atk of remaining) {
+      if (ammoCost !== 0 && atk.hasAmmo) {
+        await _subtractSingleAttackAmmo(actionUse, atk, ammoCost);
+      }
+      if (atk.chargeCost && atk.chargeCost > 0) {
+        batchChargeCost += atk.chargeCost;
+        await item.addCharges(-atk.chargeCost);
+      }
+    }
+    if (batchChargeCost > 0) shared.totalChargeCost = batchChargeCost;
+
+    // Self-charged action uses (only if this batch includes the first resolved attack)
+    if (isFirstResolvedBatch && action.isSelfCharged) {
+      await action.update({ "uses.self.value": action.uses.self.value - 1 });
+    }
+
+    // Update remaining ammo display
+    actionUse.updateAmmoUsage();
+
+    // Handle Dice So Nice (shows all attacks' dice together)
+    await actionUse.handleDiceSoNice();
+
+    // Build and optionally post the single chat card for the whole batch
+    await actionUse.getMessageData();
+    if (shared.scriptData?.hideChat !== true) {
+      await actionUse.postMessage();
+    }
+    this.sequenceResolvedAny = true;
+
+    // Restore shared arrays
+    shared.attacks = origAttacks;
+    shared.chatAttacks = origChatAttacks;
+
+    // Mark every remaining attack as resolved and finish the sequence.
+    for (let idx = startIdx; idx < this.allAttacks.length; idx++) {
+      this.resolvedIndices.add(idx);
+    }
+    this.currentIndex = this.allAttacks.length;
+    this._completed = true;
+
+    this.render();
   }
 
   /**
@@ -716,7 +911,7 @@ class SequentialAttackTracker {
       await actionUse.handleConditionals();
 
       console.debug("PF1 | Sequential attack options updated mid-sequence.");
-      this._updateDialog();
+      this.render();
     } else {
       // Cancelled — restore previous state
       shared.attackBonus = savedAttackBonus;
@@ -743,28 +938,7 @@ class SequentialAttackTracker {
       this._completed = true;
     }
 
-    this._updateDialog();
-  }
-
-  _updateDialog() {
-    if (!this.dialog?.element?.length) return;
-
-    const container = this.dialog.element.find(".sequential-attack-tracker");
-    if (container.length) {
-      container.replaceWith(this._buildTrackerBody());
-      this._activateListeners(this.dialog.element);
-
-      // Auto-close if completed
-      if (this._completed) {
-        // Small delay so user can see the final state
-        setTimeout(() => {
-          if (this.dialog?.element?.length) {
-            this._resolve("completed");
-            this.dialog.close();
-          }
-        }, 800);
-      }
-    }
+    this.render();
   }
 }
 

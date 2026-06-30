@@ -1,10 +1,7 @@
-/* ---- Sequential Attack Tracker Dialog ---- */
+/* ---- Sequential Attack Tracker (ApplicationV2) ---- */
 
-.sequential-attack-dialog {
-  background: var(--color-bg, #1a1a2e);
-}
-
-.sequential-attack-dialog .dialog-content {
+/* AppV2 supplies its own padded .window-content; the tracker body handles its own spacing. */
+.sequential-attack-tracker-app .window-content {
   padding: 0;
 }
 
@@ -30,7 +27,7 @@
 .seq-attack-title {
   font-weight: bold;
   font-size: 13px;
-  color: #000;
+  /* Inherit the window's themed text color (works in both light and dark themes). */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -187,8 +184,7 @@
   background: rgba(50, 120, 210, 0.65);
 }
 
-.seq-next-btn:disabled,
-.seq-next-btn.seq-btn-working {
+.seq-next-btn:disabled {
   opacity: 0.5;
   cursor: wait;
 }
@@ -215,6 +211,29 @@
 
 .seq-cancel-btn:hover:not(:disabled) {
   background: rgba(200, 60, 60, 0.55);
+}
+
+/* Secondary button row (Roll All Remaining) sits directly under the main row */
+.seq-attack-buttons-secondary {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Roll All Remaining button */
+.seq-all-btn {
+  background: rgba(120, 80, 200, 0.4);
+  color: #e8d8ff;
+  border-color: rgba(160, 110, 240, 0.55) !important;
+}
+
+.seq-all-btn:hover:not(:disabled) {
+  background: rgba(140, 95, 220, 0.55);
+}
+
+.seq-all-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 /* Done button */

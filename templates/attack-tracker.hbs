@@ -1,0 +1,52 @@
+{{!-- Sequential Attack Tracker --}}
+<div class="sequential-attack-tracker">
+
+  {{!-- Header --}}
+  <div class="seq-attack-header">
+    <span class="seq-attack-title">{{itemName}} — {{actionName}}</span>
+    <span class="seq-attack-progress">{{progress}}</span>
+  </div>
+
+  {{!-- Attack list --}}
+  <div class="seq-attack-list">
+    {{#each rows}}
+    <div class="seq-attack-row seq-{{this.status}}">
+      <span class="seq-attack-icon"><i class="fas {{this.icon}}"></i></span>
+      <span class="seq-attack-label">{{this.label}}</span>
+      <span class="seq-attack-bonus">{{this.bonus}}</span>
+    </div>
+    {{/each}}
+  </div>
+
+  {{!-- Primary buttons --}}
+  <div class="seq-attack-buttons">
+    {{#if completed}}
+    <button type="button" class="seq-close-btn" data-action="done">
+      <i class="fas fa-check"></i> Done
+    </button>
+    {{else}}
+    <button type="button" class="seq-next-btn" data-action="rollNext">
+      <i class="fas {{nextIcon}}"></i> {{nextLabel}}
+    </button>
+    <button type="button" class="seq-skip-btn" data-action="skip">
+      <i class="fas fa-forward"></i> Skip
+    </button>
+    <button type="button" class="seq-edit-btn" data-action="editOptions">
+      <i class="fas fa-sliders-h"></i> Edit Options
+    </button>
+    <button type="button" class="seq-cancel-btn" data-action="cancel">
+      <i class="fas fa-times"></i> Cancel
+    </button>
+    {{/if}}
+  </div>
+
+  {{!-- Secondary row: roll all remaining as a single chat card (vanilla behaviour) --}}
+  {{#if showRollAll}}
+  <div class="seq-attack-buttons seq-attack-buttons-secondary">
+    <button type="button" class="seq-all-btn" data-action="rollAll">
+      <i class="fas fa-dice"></i> Roll All Remaining ({{remainingCount}}) as one card
+    </button>
+  </div>
+  {{/if}}
+
+</div>
