@@ -19,6 +19,7 @@ A Foundry VTT module that allows full attacks to be resolved one attack at a tim
   - Skip individual attacks without rolling them
   - Retarget between attacks
   - Toggle buffs/debuffs between attacks
+- **Roll All Remaining**: Roll every remaining (unresolved) attack at once in a single chat card — the same as the system's default full-attack behaviour — to quickly finish out a sequence you no longer need per-attack control over
 - **Attack Bonus Preview**: See the calculated attack bonus for each attack before rolling
 - **Progress Tracking**: Dialog shows current attack count
 - **Individual Chat Cards**: Each attack posts its own chat message when resolved
@@ -36,7 +37,8 @@ When you have multiple attacks in a full attack sequence and sequential mode is 
 2. After confirming the dialog, a sequential tracker shows all your attacks
 3. Click **"Roll Next Attack"** to roll the current attack and post it to chat
 4. **"Skip"** an attack if you don't want to roll it
-5. **"Cancel"** to abort the entire sequence
+5. **"Roll All Remaining (N) as one card"** to roll every remaining attack together in a single chat card (vanilla full-attack behaviour); shown whenever two or more attacks are left. Note: this snapshots actor state once, so buffs toggled *between* the batched attacks are not applied individually.
+6. **"Cancel"** to abort the entire sequence
 
 The tracker will auto-close when all attacks are resolved.
 
