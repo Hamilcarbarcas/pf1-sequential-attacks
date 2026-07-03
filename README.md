@@ -1,4 +1,4 @@
-# PF1e Sequential Attacks 
+# PF1 Sequential Attacks 
 
 A Foundry VTT module that allows full attacks to be resolved one attack at a time instead of all at once.
 

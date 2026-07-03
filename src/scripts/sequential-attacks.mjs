@@ -284,7 +284,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
   };
 
   static PARTS = {
-    body: { template: "modules/pf1-sequential-attacks/templates/attack-tracker.hbs" },
+    body: { template: "modules/pf1-sequential-attacks/src/templates/attack-tracker.hbs" },
   };
 
   /** @override — dynamic title with the item name. */

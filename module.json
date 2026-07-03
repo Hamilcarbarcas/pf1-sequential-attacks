@@ -8,7 +8,7 @@
       "flags": {}
     }
   ],
-  "version": "1.0.0",
+  "version": "0.0.0",
   "compatibility": {
     "minimum": "13",
     "verified": "13"
@@ -19,24 +19,20 @@
         "id": "pf1",
         "type": "system"
       }
+    ],
+    "requires": [
+      {
+        "id": "lib-wrapper",
+        "type": "module",
+        "manifest": "https://github.com/ruipin/fvtt-lib-wrapper/releases/latest/download/module.json"
+      }
     ]
   },
-  "dependencies": [
-    {
-      "id": "lib-wrapper",
-      "type": "module",
-      "manifest": "https://github.com/ruipin/fvtt-lib-wrapper/releases/latest/download/module.json"
-    },
-    {
-      "id": "pf1",
-      "type": "system"
-    }
-  ],
   "esmodules": [
-    "scripts/sequential-attacks.mjs"
+    "src/scripts/sequential-attacks.mjs"
   ],
   "styles": [
-    "styles/sequential-attacks.css"
+    "src/styles/sequential-attacks.css"
   ],
   "url": "https://github.com/Hamilcarbarcas/pf1-sequential-attacks",
   "readme": "https://github.com/Hamilcarbarcas/pf1-sequential-attacks/blob/main/README.md",
