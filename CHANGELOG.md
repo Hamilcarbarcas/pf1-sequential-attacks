@@ -7,7 +7,10 @@
   release body. If no matching section exists, the release fails.
 -->
 
-## [Unreleased]
+## [1.2.2] - 2026-07-04
+
+### Fixed
+- Ammo selected in the attack dialog was reset to the item's default when a ranged attack didn't qualify for sequential mode (a single attack, or "Single Attack" chosen). The per-attack ammo choice is now preserved when handing off to the normal attack flow.
 
 ## [1.2.1] - 2026-06-30
 

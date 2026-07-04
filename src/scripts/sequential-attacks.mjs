@@ -133,6 +133,39 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
     //      idempotent setup (checkRequirements, autoSelectAmmo, getRollData,
     //      generateAttacks) which is safe, and then hit our patched dialog.
     actionUse.createAttackDialog = async () => form;
+
+    // Ammo selection made in the dialog lives on shared.attacks[i].ammo — the dialog
+    // mutates the attack entries directly and does NOT record the choice in `form` or
+    // in item.system.ammo.default (only the "set as default" control does that). But
+    // wrapped() re-runs generateAttacks(), which rebuilds shared.attacks from the item's
+    // DEFAULT ammo, silently discarding the user's per-attack pick (the patched dialog
+    // above never re-shows the UI to re-apply it). Snapshot the selection by index and
+    // patch generateAttacks so it re-applies after each regeneration in the chain.
+    const usesAmmo = !!action.ammo?.type;
+    const selectedAmmoIds = shared.attacks.map((atk) => atk.ammo?.id ?? null);
+    if (usesAmmo && selectedAmmoIds.some(Boolean)) {
+      const originalGenerate = actionUse.generateAttacks;
+      actionUse.generateAttacks = function (forceFullAttack) {
+        const generated = originalGenerate.call(this, forceFullAttack);
+        const reapply = (attacks) => {
+          const ammos = actionUse.getAmmo();
+          attacks.forEach((atk, i) => {
+            if (i >= selectedAmmoIds.length) return;
+            const id = selectedAmmoIds[i];
+            atk.ammo = id ? (ammos.find((o) => o.id === id) ?? atk.ammo) : null;
+          });
+          return attacks;
+        };
+        return generated instanceof Promise ? generated.then(reapply) : reapply(generated);
+      };
+      console.debug("PF1 | Sequential mode: action does not qualify, chaining to wrapped() (preserving ammo selection).");
+      try {
+        return await wrapped({ skipDialog: false });
+      } finally {
+        delete actionUse.generateAttacks; // restore the prototype method
+      }
+    }
+
     console.debug("PF1 | Sequential mode: action does not qualify, chaining to wrapped().");
     return wrapped({ skipDialog: false });
   }
