@@ -22,20 +22,20 @@
   <div class="seq-attack-buttons">
     {{#if completed}}
     <button type="button" class="seq-close-btn" data-action="done">
-      <i class="fas fa-check"></i> Done
+      <i class="fas fa-check"></i> {{localize "SEQ.Button.Done"}}
     </button>
     {{else}}
     <button type="button" class="seq-next-btn" data-action="rollNext">
       <i class="fas {{nextIcon}}"></i> {{nextLabel}}
     </button>
     <button type="button" class="seq-skip-btn" data-action="skip">
-      <i class="fas fa-forward"></i> Skip
+      <i class="fas fa-forward"></i> {{localize "SEQ.Button.Skip"}}
     </button>
     <button type="button" class="seq-edit-btn" data-action="editOptions">
-      <i class="fas fa-sliders-h"></i> Edit Options
+      <i class="fas fa-sliders-h"></i> {{localize "SEQ.Button.EditOptions"}}
     </button>
     <button type="button" class="seq-cancel-btn" data-action="cancel">
-      <i class="fas fa-times"></i> Cancel
+      <i class="fas fa-times"></i> {{localize "SEQ.Button.Cancel"}}
     </button>
     {{/if}}
   </div>
@@ -44,7 +44,7 @@
   {{#if showRollAll}}
   <div class="seq-attack-buttons seq-attack-buttons-secondary">
     <button type="button" class="seq-all-btn" data-action="rollAll">
-      <i class="fas fa-dice"></i> Roll All Remaining ({{remainingCount}}) as one card
+      <i class="fas fa-dice"></i> {{localize "SEQ.Button.RollAll" count=remainingCount}}
     </button>
   </div>
   {{/if}}

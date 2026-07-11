@@ -12,8 +12,8 @@
 
 Hooks.once("init", () => {
   game.settings.register("pf1-sequential-attacks", "sequentialAttacks", {
-    name: "Sequential Full Attacks",
-    hint: "When enabled, full attacks are rolled one at a time, allowing retargeting and effect changes between attacks.",
+    name: "SEQ.Settings.Enabled.Name",
+    hint: "SEQ.Settings.Enabled.Hint",
     scope: "client",
     config: true,
     type: Boolean,
@@ -300,7 +300,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     classes: ["pf1-sequential-attacks", "sequential-attack-tracker-app"],
     tag: "div",
     window: {
-      title: "Sequential Attack",
+      title: "SEQ.Window.Title",
       icon: "fa-solid fa-crosshairs",
       resizable: false,
       minimizable: false,
@@ -322,7 +322,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
 
   /** @override — dynamic title with the item name. */
   get title() {
-    return `Sequential Attack: ${this.actionUse.item.name}`;
+    return game.i18n.format("SEQ.Title", { name: this.actionUse.item.name });
   }
 
   /**
@@ -379,7 +379,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       // "Roll Final Attack" already produces the same single-attack card.
       showRollAll: !this._completed && remainingCount >= 2,
       remainingCount,
-      nextLabel: isLast ? "Roll Final Attack" : "Roll Next Attack",
+      nextLabel: game.i18n.localize(isLast ? "SEQ.Button.RollFinal" : "SEQ.Button.RollNext"),
       nextIcon: isLast ? "fa-flag-checkered" : "fa-dice-d20",
     };
   }
@@ -426,7 +426,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       await fn.call(this);
     } catch (err) {
       console.error(`pf1-sequential-attacks | ${errMsg}`, err);
-      ui.notifications.error(`${errMsg} Check console.`);
+      ui.notifications.error(game.i18n.format("SEQ.Error.Notify", { msg: errMsg }));
       if (this.rendered) this.render();
     } finally {
       this._busy = false;
@@ -436,11 +436,11 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
   // ---- Actions ---- //
 
   static #onRollNext(event, target) {
-    return this.#runAction(target, this._resolveCurrentAttack, "Error resolving attack.");
+    return this.#runAction(target, this._resolveCurrentAttack, game.i18n.localize("SEQ.Error.ResolveAttack"));
   }
 
   static #onRollAll(event, target) {
-    return this.#runAction(target, this._resolveAllRemaining, "Error resolving remaining attacks.");
+    return this.#runAction(target, this._resolveAllRemaining, game.i18n.localize("SEQ.Error.ResolveRemaining"));
   }
 
   static #onSkip(event, target) {
@@ -448,7 +448,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   static #onEditOptions(event, target) {
-    return this.#runAction(target, this._editOptions, "Error editing attack options.");
+    return this.#runAction(target, this._editOptions, game.i18n.localize("SEQ.Error.EditOptions"));
   }
 
   static #onCancel(event, target) {
@@ -1027,7 +1027,7 @@ class SequentialEditDialog extends pf1.applications.AttackDialog {
   _toggleExtraAttack() {}
 
   get title() {
-    return `Edit Attack Options: ${this.actionUse.item.name}`;
+    return game.i18n.format("SEQ.EditTitle", { name: this.actionUse.item.name });
   }
 
   /** @override */
@@ -1040,7 +1040,7 @@ class SequentialEditDialog extends pf1.applications.AttackDialog {
     // Replace Single Attack / Full Attack with a single "OK" button
     html.find(`button[name="attack_single"]`).remove();
     html.find(`button[name="attack_full"]`)
-      .html(`<i class="fas fa-check"></i> OK`);
+      .html(`<i class="fas fa-check"></i> ${game.i18n.localize("SEQ.Button.OK")}`);
   }
 }
 

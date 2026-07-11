@@ -1,0 +1,22 @@
+{
+  "SEQ.Settings.Enabled.Name": "Sequential Full Attacks",
+  "SEQ.Settings.Enabled.Hint": "When enabled, full attacks are rolled one at a time, allowing retargeting and effect changes between attacks.",
+
+  "SEQ.Window.Title": "Sequential Attack",
+  "SEQ.Title": "Sequential Attack: {name}",
+  "SEQ.EditTitle": "Edit Attack Options: {name}",
+
+  "SEQ.Button.RollNext": "Roll Next Attack",
+  "SEQ.Button.RollFinal": "Roll Final Attack",
+  "SEQ.Button.Done": "Done",
+  "SEQ.Button.Skip": "Skip",
+  "SEQ.Button.EditOptions": "Edit Options",
+  "SEQ.Button.Cancel": "Cancel",
+  "SEQ.Button.RollAll": "Roll All Remaining ({count}) as one card",
+  "SEQ.Button.OK": "OK",
+
+  "SEQ.Error.Notify": "{msg} Check console.",
+  "SEQ.Error.ResolveAttack": "Error resolving attack.",
+  "SEQ.Error.ResolveRemaining": "Error resolving remaining attacks.",
+  "SEQ.Error.EditOptions": "Error editing attack options."
+}

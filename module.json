@@ -34,6 +34,13 @@
   "styles": [
     "src/styles/sequential-attacks.css"
   ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
   "url": "https://github.com/Hamilcarbarcas/pf1-sequential-attacks",
   "readme": "https://github.com/Hamilcarbarcas/pf1-sequential-attacks/blob/main/README.md",
   "bugs": "https://github.com/Hamilcarbarcas/pf1-sequential-attacks/issues",

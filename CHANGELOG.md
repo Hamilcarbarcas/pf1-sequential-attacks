@@ -7,6 +7,11 @@
   release body. If no matching section exists, the release fails.
 -->
 
+## [Unreleased]
+
+### Changed
+- All user-facing text (setting, tracker window, buttons, dialog titles, error notifications) is now localizable via `game.i18n` (English `lang/en.json` included).
+
 ## [1.2.2] - 2026-07-04
 
 ### Fixed
