@@ -208,6 +208,15 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   // Prepare charge cost
   await actionUse.prepareChargeCost();
 
+  // Capture the whole-use charge cost NOW, while rollData.chargeCost is still valid.
+  // _prepareSequenceRollData() rebuilds rollData before each attack resolves and resets
+  // chargeCost to 0 (getRollData: `rollData.chargeCost ||= 0`), so it can't be read at
+  // resolution time. Per-attack actions instead stamp each attack's own cost onto
+  // atk.chargeCost below; for everything else (spells' slots, single-charge items) this
+  // whole-use cost is drained exactly ONCE for the full attack — mirroring vanilla
+  // process() — in _resolveCurrentAttack / _resolveAllRemaining.
+  shared._wholeChargeCost = shared.action.uses?.perAttack ? 0 : (rollData.chargeCost ?? 0);
+
   // Filter attacks (charges)
   if (rollData.chargeCost != 0 && shared.action.uses?.perAttack) {
     const cost = rollData.chargeCost;
@@ -733,10 +742,16 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       await _subtractSingleAttackAmmo(actionUse, atk, ammoCost);
     }
 
-    // Subtract charges for this attack
+    // Subtract charges.
     if (atk.chargeCost && atk.chargeCost > 0) {
+      // Per-attack action: drain this attack's own cost as it resolves.
       shared.totalChargeCost = atk.chargeCost;
       await item.addCharges(-atk.chargeCost);
+    } else if (isFirstResolvedAttack && shared._wholeChargeCost > 0) {
+      // Whole-use cost (spell slot, single-charge item): drain ONCE for the whole
+      // full attack, on the first resolved attack — mirrors vanilla process().
+      shared.totalChargeCost = shared._wholeChargeCost;
+      await item.addCharges(-shared._wholeChargeCost);
     }
 
     // Self-charged action uses (only on first resolved attack)
@@ -860,6 +875,13 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
         batchChargeCost += atk.chargeCost;
         await item.addCharges(-atk.chargeCost);
       }
+    }
+    // Whole-use cost (non per-attack): drain ONCE, only if this batch includes the
+    // first resolved attack — mirrors vanilla process(). Per-attack costs were summed
+    // in the loop above instead.
+    if (!action.uses?.perAttack && isFirstResolvedBatch && shared._wholeChargeCost > 0) {
+      batchChargeCost = shared._wholeChargeCost;
+      await item.addCharges(-shared._wholeChargeCost);
     }
     if (batchChargeCost > 0) shared.totalChargeCost = batchChargeCost;
 
