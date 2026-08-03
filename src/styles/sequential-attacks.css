@@ -1,4 +1,18 @@
-/* ---- Sequential Attack Tracker (ApplicationV2) ---- */
+/* Sequential Attack Tracker (ApplicationV2) — styles.
+ *
+ * Two palettes ship with the module, selected by the "Use Legacy Theme" client setting.
+ * The setting stamps either `seq-theme-amber` (default) or `seq-theme-legacy` onto the
+ * application frame. Structural rules both palettes share come first; every rule that
+ * carries colour lives in one of the two theme blocks below, so neither can bleed into
+ * the other and the legacy look stays exactly as it was.
+ *
+ * No bare `button` selectors and no `font-family` on buttons anywhere: an unscoped button
+ * font rule overrides Font Awesome's and turns the window header's control glyphs into boxes.
+ */
+
+/* ==========================================================================
+ *  Shared structure — layout only, no colour
+ * ========================================================================== */
 
 /* AppV2 supplies its own padded .window-content; the tracker body handles its own spacing. */
 .sequential-attack-tracker-app .window-content {
@@ -19,15 +33,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--color-border-light-2, #444);
-  margin-bottom: 2px;
 }
 
 .seq-attack-title {
-  font-weight: bold;
-  font-size: 13px;
-  /* Inherit the window's themed text color (works in both light and dark themes). */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -35,90 +43,23 @@
 }
 
 .seq-attack-progress {
-  font-size: 12px;
-  color: var(--color-text-dark-secondary, #aaa);
   white-space: nowrap;
 }
 
-/* ---- Attack List ---- */
+/* ---- Attack list ---- */
 
 .seq-attack-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .seq-attack-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
-  border-radius: 4px;
   font-size: 13px;
   transition: background 0.15s, opacity 0.15s;
 }
-
-/* Pending (future attacks) */
-.seq-attack-row.seq-pending {
-  background: transparent;
-  color: var(--color-text-dark-secondary, #999);
-}
-
-.seq-attack-row.seq-pending .seq-attack-icon {
-  color: var(--color-text-dark-secondary, #666);
-}
-
-/* Current attack (highlighted) */
-.seq-attack-row.seq-current {
-  background: rgba(40, 100, 180, 0.45);
-  border: 1px solid rgba(80, 160, 255, 0.6);
-  color: #fff;
-  font-weight: bold;
-}
-
-.seq-attack-row.seq-current .seq-attack-icon {
-  color: #b0dfff;
-  animation: seq-pulse 1.5s ease-in-out infinite;
-}
-
-/* Resolved (completed attacks) */
-.seq-attack-row.seq-resolved {
-  background: rgba(80, 200, 120, 0.08);
-  color: var(--color-text-dark-secondary, #888);
-  opacity: 0.55;
-}
-
-.seq-attack-row.seq-resolved .seq-attack-icon {
-  color: #50c878;
-}
-
-.seq-attack-row.seq-resolved .seq-attack-label {
-  text-decoration: line-through;
-  text-decoration-color: rgba(136, 136, 136, 0.4);
-}
-
-/* Skipped attacks */
-.seq-attack-row.seq-skipped {
-  background: rgba(200, 170, 50, 0.08);
-  color: var(--color-text-dark-secondary, #888);
-  opacity: 0.55;
-}
-
-.seq-attack-row.seq-skipped .seq-attack-icon {
-  color: #c8a832;
-}
-
-.seq-attack-row.seq-skipped .seq-attack-label {
-  text-decoration: line-through;
-  text-decoration-color: rgba(200, 170, 50, 0.5);
-}
-
-.seq-attack-row.seq-skipped .seq-attack-bonus {
-  text-decoration: line-through;
-  text-decoration-color: rgba(200, 170, 50, 0.5);
-}
-
-/* ---- Icons & Labels ---- */
 
 .seq-attack-icon {
   width: 16px;
@@ -148,13 +89,329 @@
 .seq-attack-buttons {
   display: flex;
   gap: 6px;
+}
+
+/* "Roll Next" takes the room; Skip and Cancel stay narrow. Expressed through specificity
+   rather than !important so a theme block can still re-balance the row if it needs to. */
+.seq-attack-buttons button {
+  flex: 1 1 0;
+}
+
+.seq-attack-buttons .seq-skip-btn {
+  flex-grow: 0.35;
+}
+
+.seq-attack-buttons .seq-cancel-btn {
+  flex-grow: 0.4;
+}
+
+/* ---- Pulse animation for the current attack's icon (both themes) ---- */
+
+@keyframes seq-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ==========================================================================
+ *  Default theme — amber on dark
+ *
+ *  Matches the other PF1 modules by this author (exploration, monster harvesting,
+ *  token randomizer, critical effects): amber accent, translucent-white text on dark
+ *  panels, flat separators, amber-gradient primary buttons.
+ *
+ *  Every colour is stated rather than inherited. The tracker carries no `pf1` class,
+ *  and — like the critical-effects resolution dialog — it should not change character
+ *  if the client switches between Foundry's light and dark themes.
+ * ========================================================================== */
+
+.seq-theme-amber {
+  --seq-accent: #e8a63e;
+  --seq-panel: rgba(0, 0, 0, 0.15);
+  --seq-edge: rgba(255, 255, 255, 0.08);
+  --seq-text: rgba(255, 255, 255, 0.85);
+  --seq-dim: rgba(255, 255, 255, 0.5);
+  --seq-faint: rgba(255, 255, 255, 0.35);
+  --seq-done: #51cf66;
+}
+
+.seq-theme-amber .window-content {
+  background: rgba(20, 20, 26, 0.92);
+  color: var(--seq-text);
+}
+
+/* ---- Header ---- */
+
+.seq-theme-amber .seq-attack-header {
+  padding: 0 2px 6px;
+  border-bottom: 2px solid var(--seq-edge);
+  margin-bottom: 2px;
+}
+
+.seq-theme-amber .seq-attack-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--seq-accent);
+}
+
+/* Progress reads as a count badge rather than a second line of prose. */
+.seq-theme-amber .seq-attack-progress {
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--seq-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Attack list ---- */
+
+.seq-theme-amber .seq-attack-list {
+  gap: 1px;
+  padding: 4px;
+  border: 1px solid var(--seq-edge);
+  border-radius: 4px;
+  background: var(--seq-panel);
+}
+
+/* The left rail is the status channel: transparent until a row becomes current. */
+.seq-theme-amber .seq-attack-row {
+  padding: 4px 8px;
+  border-left: 3px solid transparent;
+  border-radius: 0 3px 3px 0;
+  color: var(--seq-dim);
+}
+
+.seq-theme-amber .seq-attack-row .seq-attack-icon {
+  color: var(--seq-faint);
+}
+
+/* Pending (future attacks) — the resting state, nothing to add. */
+
+/* Current attack */
+.seq-theme-amber .seq-attack-row.seq-current {
+  background: rgba(232, 166, 62, 0.12);
+  border-left-color: var(--seq-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.seq-theme-amber .seq-attack-row.seq-current .seq-attack-icon {
+  color: var(--seq-accent);
+  animation: seq-pulse 1.5s ease-in-out infinite;
+}
+
+.seq-theme-amber .seq-attack-row.seq-current .seq-attack-bonus {
+  color: var(--seq-accent);
+}
+
+/* Resolved (completed attacks) */
+.seq-theme-amber .seq-attack-row.seq-resolved {
+  color: var(--seq-faint);
+}
+
+.seq-theme-amber .seq-attack-row.seq-resolved .seq-attack-icon {
+  color: var(--seq-done);
+  opacity: 0.75;
+}
+
+.seq-theme-amber .seq-attack-row.seq-resolved .seq-attack-label {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Skipped attacks — a desaturated amber, so "set aside" reads as related to the accent
+   without competing with the solid amber the current row uses. */
+.seq-theme-amber .seq-attack-row.seq-skipped {
+  color: var(--seq-faint);
+}
+
+.seq-theme-amber .seq-attack-row.seq-skipped .seq-attack-icon {
+  color: rgba(232, 166, 62, 0.5);
+}
+
+.seq-theme-amber .seq-attack-row.seq-skipped .seq-attack-label,
+.seq-theme-amber .seq-attack-row.seq-skipped .seq-attack-bonus {
+  text-decoration: line-through;
+  text-decoration-color: rgba(232, 166, 62, 0.45);
+}
+
+/* ---- Buttons ---- */
+
+.seq-theme-amber .seq-attack-buttons {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--seq-edge);
+}
+
+/* `height: auto` is needed because core sets a fixed `--button-size` height on every button. */
+.seq-theme-amber .seq-attack-buttons button {
+  height: auto;
+  min-height: 0;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+/* Secondary: Skip, Edit Options, Cancel, Roll All Remaining. */
+.seq-theme-amber .seq-skip-btn,
+.seq-theme-amber .seq-edit-btn,
+.seq-theme-amber .seq-cancel-btn,
+.seq-theme-amber .seq-all-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--seq-dim);
+}
+
+.seq-theme-amber .seq-skip-btn:hover:not(:disabled),
+.seq-theme-amber .seq-edit-btn:hover:not(:disabled),
+.seq-theme-amber .seq-all-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* Cancel throws the sequence away — give it the destructive hover the other modules use. */
+.seq-theme-amber .seq-cancel-btn:hover:not(:disabled) {
+  background: rgba(200, 60, 60, 0.35);
+  border-color: rgba(200, 60, 60, 0.5);
+  color: #ffdada;
+}
+
+/* Primary: whichever button advances the sequence — Roll Next / Roll Final, then Done. */
+.seq-theme-amber .seq-next-btn,
+.seq-theme-amber .seq-close-btn {
+  background: linear-gradient(to bottom, #c08030, #a06820);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  color: #fff;
+}
+
+.seq-theme-amber .seq-next-btn:hover:not(:disabled),
+.seq-theme-amber .seq-close-btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #d09040, #b07830);
+  border-color: rgba(0, 0, 0, 0.3);
+  color: #fff;
+}
+
+.seq-theme-amber .seq-attack-buttons button:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+/* Secondary button row (Roll All Remaining) sits directly under the main row. */
+.seq-theme-amber .seq-attack-buttons-secondary {
+  margin-top: -2px;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ==========================================================================
+ *  Legacy theme — the module's original palette
+ *
+ *  Kept verbatim behind the "Use Legacy Theme" setting: blue current attack, green
+ *  resolved, gold skipped, and translucent tinted buttons.
+ * ========================================================================== */
+
+/* ---- Header ---- */
+
+.seq-theme-legacy .seq-attack-header {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--color-border-light-2, #444);
+  margin-bottom: 2px;
+}
+
+.seq-theme-legacy .seq-attack-title {
+  font-weight: bold;
+  font-size: 13px;
+  /* Inherit the window's themed text color (works in both light and dark themes). */
+}
+
+.seq-theme-legacy .seq-attack-progress {
+  font-size: 12px;
+  color: var(--color-text-dark-secondary, #aaa);
+}
+
+/* ---- Attack list ---- */
+
+.seq-theme-legacy .seq-attack-list {
+  gap: 2px;
+}
+
+.seq-theme-legacy .seq-attack-row {
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+
+/* Pending (future attacks) */
+.seq-theme-legacy .seq-attack-row.seq-pending {
+  background: transparent;
+  color: var(--color-text-dark-secondary, #999);
+}
+
+.seq-theme-legacy .seq-attack-row.seq-pending .seq-attack-icon {
+  color: var(--color-text-dark-secondary, #666);
+}
+
+/* Current attack (highlighted) */
+.seq-theme-legacy .seq-attack-row.seq-current {
+  background: rgba(40, 100, 180, 0.45);
+  border: 1px solid rgba(80, 160, 255, 0.6);
+  color: #fff;
+  font-weight: bold;
+}
+
+.seq-theme-legacy .seq-attack-row.seq-current .seq-attack-icon {
+  color: #b0dfff;
+  animation: seq-pulse 1.5s ease-in-out infinite;
+}
+
+/* Resolved (completed attacks) */
+.seq-theme-legacy .seq-attack-row.seq-resolved {
+  background: rgba(80, 200, 120, 0.08);
+  color: var(--color-text-dark-secondary, #888);
+  opacity: 0.55;
+}
+
+.seq-theme-legacy .seq-attack-row.seq-resolved .seq-attack-icon {
+  color: #50c878;
+}
+
+.seq-theme-legacy .seq-attack-row.seq-resolved .seq-attack-label {
+  text-decoration: line-through;
+  text-decoration-color: rgba(136, 136, 136, 0.4);
+}
+
+/* Skipped attacks */
+.seq-theme-legacy .seq-attack-row.seq-skipped {
+  background: rgba(200, 170, 50, 0.08);
+  color: var(--color-text-dark-secondary, #888);
+  opacity: 0.55;
+}
+
+.seq-theme-legacy .seq-attack-row.seq-skipped .seq-attack-icon {
+  color: #c8a832;
+}
+
+.seq-theme-legacy .seq-attack-row.seq-skipped .seq-attack-label,
+.seq-theme-legacy .seq-attack-row.seq-skipped .seq-attack-bonus {
+  text-decoration: line-through;
+  text-decoration-color: rgba(200, 170, 50, 0.5);
+}
+
+/* ---- Buttons ---- */
+
+.seq-theme-legacy .seq-attack-buttons {
   margin-top: 4px;
   padding-top: 6px;
   border-top: 1px solid var(--color-border-light-2, #444);
 }
 
-.seq-attack-buttons button {
-  flex: 1;
+.seq-theme-legacy .seq-attack-buttons button {
   padding: 3px 6px !important;
   font-size: 11px !important;
   line-height: 1.2 !important;
@@ -165,91 +422,82 @@
   transition: background 0.15s, transform 0.1s;
 }
 
-.seq-attack-buttons button:hover:not(:disabled) {
+.seq-theme-legacy .seq-attack-buttons button:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.seq-attack-buttons button:active:not(:disabled) {
+.seq-theme-legacy .seq-attack-buttons button:active:not(:disabled) {
   transform: translateY(0);
 }
 
 /* Next / Final attack button */
-.seq-next-btn {
+.seq-theme-legacy .seq-next-btn {
   background: rgba(40, 100, 180, 0.5);
   color: #e0f0ff;
   border-color: rgba(80, 160, 255, 0.6) !important;
 }
 
-.seq-next-btn:hover:not(:disabled) {
+.seq-theme-legacy .seq-next-btn:hover:not(:disabled) {
   background: rgba(50, 120, 210, 0.65);
 }
 
-.seq-next-btn:disabled {
+.seq-theme-legacy .seq-next-btn:disabled {
   opacity: 0.5;
   cursor: wait;
 }
 
 /* Skip button */
-.seq-skip-btn {
+.seq-theme-legacy .seq-skip-btn {
   background: rgba(200, 170, 50, 0.35);
   color: #fff0cc;
   border-color: rgba(200, 170, 50, 0.5) !important;
-  flex: 0.35 !important;
 }
 
-.seq-skip-btn:hover:not(:disabled) {
+.seq-theme-legacy .seq-skip-btn:hover:not(:disabled) {
   background: rgba(210, 180, 60, 0.5);
 }
 
 /* Cancel button */
-.seq-cancel-btn {
+.seq-theme-legacy .seq-cancel-btn {
   background: rgba(180, 50, 50, 0.4);
   color: #ffcccc;
   border-color: rgba(220, 80, 80, 0.5) !important;
-  flex: 0.4 !important;
 }
 
-.seq-cancel-btn:hover:not(:disabled) {
+.seq-theme-legacy .seq-cancel-btn:hover:not(:disabled) {
   background: rgba(200, 60, 60, 0.55);
 }
 
 /* Secondary button row (Roll All Remaining) sits directly under the main row */
-.seq-attack-buttons-secondary {
+.seq-theme-legacy .seq-attack-buttons-secondary {
   margin-top: 0;
   padding-top: 0;
   border-top: none;
 }
 
 /* Roll All Remaining button */
-.seq-all-btn {
+.seq-theme-legacy .seq-all-btn {
   background: rgba(120, 80, 200, 0.4);
   color: #e8d8ff;
   border-color: rgba(160, 110, 240, 0.55) !important;
 }
 
-.seq-all-btn:hover:not(:disabled) {
+.seq-theme-legacy .seq-all-btn:hover:not(:disabled) {
   background: rgba(140, 95, 220, 0.55);
 }
 
-.seq-all-btn:disabled {
+.seq-theme-legacy .seq-all-btn:disabled {
   opacity: 0.5;
   cursor: wait;
 }
 
 /* Done button */
-.seq-close-btn {
+.seq-theme-legacy .seq-close-btn {
   background: rgba(80, 200, 120, 0.2);
   color: #7ddf9b;
   border-color: rgba(80, 200, 120, 0.4) !important;
 }
 
-.seq-close-btn:hover {
+.seq-theme-legacy .seq-close-btn:hover {
   background: rgba(80, 200, 120, 0.35);
-}
-
-/* ---- Pulse animation for current attack icon ---- */
-
-@keyframes seq-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }

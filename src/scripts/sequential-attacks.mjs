@@ -19,6 +19,17 @@ Hooks.once("init", () => {
     type: Boolean,
     default: false,
   });
+
+  // Purely cosmetic: picks which palette the tracker window is stamped with. See
+  // src/styles/sequential-attacks.css — the two themes are fully separated there.
+  game.settings.register("pf1-sequential-attacks", "legacyTheme", {
+    name: "SEQ.Settings.LegacyTheme.Name",
+    hint: "SEQ.Settings.LegacyTheme.Hint",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
 });
 
 // ---- Wrapper Registration ---- //
@@ -289,7 +300,14 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) {
   constructor(actionUse, allAttacks) {
-    super({});
+    // Stamp the chosen palette onto the frame. This goes through super() rather than a
+    // post-construction tweak because ApplicationV2 freezes `this.options` — and because
+    // it merges array options by concatenation, so this appends to DEFAULT_OPTIONS.classes
+    // (which it deep-clones first) instead of replacing them.
+    const theme = game.settings.get("pf1-sequential-attacks", "legacyTheme")
+      ? "seq-theme-legacy"
+      : "seq-theme-amber";
+    super({ classes: [theme] });
     this.actionUse = actionUse;
     this.allAttacks = allAttacks;
     this.currentIndex = 0;

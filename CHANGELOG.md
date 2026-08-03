@@ -9,7 +9,11 @@
 
 ## [Unreleased]
 
+### Added
+- **Use Legacy Theme** setting (per-client). Restores the tracker window's original blue/green/gold colour scheme.
+
 ### Changed
+- Tracker window restyled to match companion modules: amber accent on dark panels, a status rail on the current attack, and an amber-gradient primary button. Purely cosmetic — attack resolution is unchanged.
 - All user-facing text (setting, tracker window, buttons, dialog titles, error notifications) is now localizable via `game.i18n` (English `lang/en.json` included).
 
 ## [1.2.2] - 2026-07-04

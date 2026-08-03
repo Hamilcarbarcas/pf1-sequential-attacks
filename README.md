@@ -25,6 +25,7 @@ A Foundry VTT module that allows full attacks to be resolved one attack at a tim
 - **Attack Bonus Preview**: See the calculated attack bonus for each attack before rolling
 - **Progress Tracking**: Dialog shows current attack count
 - **Individual Chat Cards**: Each attack posts its own chat message when resolved
+- **Theming**: The tracker uses an amber-on-dark theme by default; a per-client **Use Legacy Theme** setting restores the original blue/green/gold colour scheme
 
 ## Usage
 
@@ -32,6 +33,14 @@ A Foundry VTT module that allows full attacks to be resolved one attack at a tim
 1. Open the module settings
 2. Find "Sequential Full Attacks" setting
 3. Toggle it on to enable
+
+### Appearance
+The tracker window ships with two colour schemes, chosen per client under **Use Legacy Theme**:
+
+- **Off (default)** — amber accent on dark panels, matching this author's other PF1 modules.
+- **On** — the module's original scheme: blue current attack, green resolved, gold skipped, tinted buttons.
+
+This setting affects appearance only. Note that the default theme states its own colours rather than following Foundry's light/dark theme, so it stays dark regardless of your client theme.
 
 ### During an Attack
 When you have multiple attacks in a full attack sequence and sequential mode is enabled:

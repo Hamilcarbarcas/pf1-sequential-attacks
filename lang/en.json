@@ -2,6 +2,9 @@
   "SEQ.Settings.Enabled.Name": "Sequential Full Attacks",
   "SEQ.Settings.Enabled.Hint": "When enabled, full attacks are rolled one at a time, allowing retargeting and effect changes between attacks.",
 
+  "SEQ.Settings.LegacyTheme.Name": "Use Legacy Theme",
+  "SEQ.Settings.LegacyTheme.Hint": "Restores the tracker window's original colour scheme (blue current attack, green resolved, gold skipped). Off by default, which uses the amber-on-dark theme shared with this author's other PF1 modules. Appearance only — nothing about how attacks resolve changes.",
+
   "SEQ.Window.Title": "Sequential Attack",
   "SEQ.Title": "Sequential Attack: {name}",
   "SEQ.EditTitle": "Edit Attack Options: {name}",
