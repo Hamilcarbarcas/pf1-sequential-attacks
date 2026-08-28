@@ -457,6 +457,11 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       if (this.rendered) this.render();
     } finally {
       this._busy = false;
+      // Re-enable the button if the action returned without re-rendering — e.g. the user
+      // cancelled the Edit Options dialog, which restores state and returns as-is. Without
+      // this the button stays disabled until some other action triggers a render. If a
+      // render did happen, `target` is a detached node from the old DOM and this is a no-op.
+      if (target) target.disabled = false;
     }
   }
 

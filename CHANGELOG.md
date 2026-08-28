@@ -16,6 +16,9 @@
 - Tracker window restyled to match companion modules: amber accent on dark panels, a status rail on the current attack, and an amber-gradient primary button. Purely cosmetic — attack resolution is unchanged.
 - All user-facing text (setting, tracker window, buttons, dialog titles, error notifications) is now localizable via `game.i18n` (English `lang/en.json` included).
 
+### Fixed
+- **Edit Options** stayed greyed out after cancelling the edit dialog, until another attack was rolled or skipped. Tracker buttons now re-enable whenever an action finishes without redrawing the window.
+
 ## [1.2.2] - 2026-07-04
 
 ### Fixed
