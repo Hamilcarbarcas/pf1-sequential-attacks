@@ -14,10 +14,10 @@ Hooks.once("init", () => {
   game.settings.register("pf1-sequential-attacks", "sequentialAttacks", {
     name: "SEQ.Settings.Enabled.Name",
     hint: "SEQ.Settings.Enabled.Hint",
-    scope: "client",
+    scope: "user",
     config: true,
     type: Boolean,
-    default: false,
+    default: true,
   });
 
   // Purely cosmetic: picks which palette the tracker window is stamped with. See
@@ -67,11 +67,10 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   const actionUse = this; // `this` is the ActionUse instance
   const action = actionUse.action;
 
-  // Quick pre-check: only full attacks with attack rolls can be sequential.
-  // If the action doesn't have attack rolls, just chain normally.
-  if (!action.hasAttack) {
-    return wrapped({ skipDialog });
-  }
+  // Actions with no attack roll are filtered below, after generateAttacks, rather
+  // than here: an attack-less action normally produces one entry and bails there,
+  // but one a module has given several entries (repeated uses of a spell that
+  // rolls no attack) is as sequential as any full attack.
 
   // If the dialog was already skipped (e.g. a downstream wrapper or macro), chain normally.
   if (skipDialog) {
@@ -108,6 +107,14 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
 
   actionUse.shared.fullAttack = true;
   await actionUse.generateAttacks(true);
+
+  // An attack-less action with a single entry has nothing to sequence. Chain out
+  // before the dialog is consumed, so the overwhelmingly common non-attack use is
+  // untouched by this module — only the four idempotent setup calls above have run,
+  // and wrapped() re-runs them safely.
+  if (!action.hasAttack && actionUse.shared.attacks.length <= 1) {
+    return wrapped({ skipDialog });
+  }
 
   // Initialize first-attack-only arrays before the dialog fires any script calls
   // (e.g. via pf1PostAttackDialog hooks), so scripts that push to them don't error.
@@ -386,9 +393,14 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
         icon = "fa-crosshairs";
       }
 
-      const bonusTotal =
-        pf1.dice.RollPF.safeRollSync(atk.attackBonus, rollData, undefined, undefined, { minimize: true }).total ?? 0;
-      const bonus = bonusTotal >= 0 ? `+${bonusTotal}` : `${bonusTotal}`;
+      // An action with no attack roll has no bonus to preview — every entry would
+      // read "+0". Leave the column empty rather than printing a meaningless number.
+      let bonus = "";
+      if (this.actionUse.action.hasAttack) {
+        const bonusTotal =
+          pf1.dice.RollPF.safeRollSync(atk.attackBonus, rollData, undefined, undefined, { minimize: true }).total ?? 0;
+        bonus = bonusTotal >= 0 ? `+${bonusTotal}` : `${bonusTotal}`;
+      }
 
       return { label: atk.label, status, icon, bonus };
     });
@@ -610,7 +622,11 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       actionUse,
     });
 
-    if (atk.type !== "manyshot") {
+    // Mirror PF1's own branch in generateChatAttacks: an action whose type carries
+    // no attack roll gets damage and notes only. Without this, a multi-entry
+    // attack-less action (repeated uses of a spell) would sprout an attack roll
+    // per entry.
+    if (action.hasAttack && atk.type !== "manyshot") {
       // PF1's addAttack filter removes "0" but not "(0)" — extra attacks with no configured
       // bonus formula get bonus:"(0)", which slips through and renders as "+0 [undefined]".
       // Strip outer parens from the unflaired value and skip it if it reduces to "0".
@@ -759,6 +775,18 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       return;
     }
 
+    // Per-Use script calls for this one attack. Vanilla runs them from its own
+    // `use` pass over the finished card; this path never reaches that loop,
+    // because each attack gets its own card. `shared.reject` cancels the sequence,
+    // matching what it does to a whole action in vanilla.
+    await _runPerUseScripts(actionUse, [chatAttack], idx, this.allAttacks.length);
+    if (shared.reject) {
+      shared.attacks = origAttacks;
+      shared.chatAttacks = origChatAttacks;
+      this._finish("cancelled");
+      return;
+    }
+
     // Subtract ammo for this single attack
     const ammoCost = action.ammo.cost;
     if (ammoCost !== 0 && atk.hasAmmo) {
@@ -789,10 +817,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     await actionUse.handleDiceSoNice();
 
     // Build and optionally post the chat card for this single attack
-    await actionUse.getMessageData();
-    if (shared.scriptData?.hideChat !== true) {
-      await actionUse.postMessage();
-    }
+    await _postCard(actionUse);
     this.sequenceResolvedAny = true;
 
     // Restore shared arrays
@@ -887,6 +912,16 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       return;
     }
 
+    // Per-Use script calls, one per attack in the batch — the same count they
+    // would have had resolving one at a time.
+    await _runPerUseScripts(actionUse, chatAttacks, startIdx, this.allAttacks.length);
+    if (shared.reject) {
+      shared.attacks = origAttacks;
+      shared.chatAttacks = origChatAttacks;
+      this._finish("cancelled");
+      return;
+    }
+
     // Subtract ammo and charges per attack.
     const ammoCost = action.ammo.cost;
     let batchChargeCost = 0;
@@ -920,10 +955,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     await actionUse.handleDiceSoNice();
 
     // Build and optionally post the single chat card for the whole batch
-    await actionUse.getMessageData();
-    if (shared.scriptData?.hideChat !== true) {
-      await actionUse.postMessage();
-    }
+    await _postCard(actionUse);
     this.sequenceResolvedAny = true;
 
     // Restore shared arrays
@@ -1086,6 +1118,69 @@ class SequentialEditDialog extends pf1.applications.AttackDialog {
     html.find(`button[name="attack_single"]`).remove();
     html.find(`button[name="attack_full"]`)
       .html(`<i class="fas fa-check"></i> ${game.i18n.localize("SEQ.Button.OK")}`);
+  }
+}
+
+// ---- Helper: Post one card ---- //
+
+/**
+ * Build and post the card for the attacks now on `shared.attacks`, then fire
+ * `pf1SequentialAttacks.postCard(actionUse, message)`.
+ *
+ * `pf1PostActionUse` fires once, after the tracker closes, with only the LAST card
+ * and the full attack list restored — so it can't tell which card an attack went
+ * to. This hook is the per-card counterpart: `shared.attacks` still holds exactly
+ * this card's attacks, in the card's own order, so an attack's index there is its
+ * index in the card's `system.rolls.attacks`.
+ *
+ * `message` is null when the card was hidden (`hideChat`) or a
+ * `pf1PreDisplayActionUse` hook blocked it — the same null `pf1PostActionUse` passes.
+ *
+ * @param {ActionUse} actionUse - The in-flight use.
+ * @returns {Promise<ChatMessage|null>}
+ */
+async function _postCard(actionUse) {
+  await actionUse.getMessageData();
+
+  let message = null;
+  if (actionUse.shared.scriptData?.hideChat !== true) {
+    // postMessage hands back `shared` rather than a message when a pre-display hook vetoes it.
+    const posted = await actionUse.postMessage();
+    if (posted instanceof ChatMessage) message = posted;
+  }
+
+  Hooks.callAll("pf1SequentialAttacks.postCard", actionUse, message);
+  return message;
+}
+
+// ---- Helper: Per-Use script calls ---- //
+
+/**
+ * Fire pf1-new-script-hooks' Per Use category for each card built here.
+ *
+ * Vanilla runs that category from its own `use` pass, looping the finished card's
+ * rows. Sequential mode posts a card per attack and never reaches that loop, so it
+ * drives the same category itself and the count comes out identical either way.
+ *
+ * Entirely optional: no-ops when the module is absent or too old to publish the API.
+ *
+ * @param {ActionUse} actionUse - The in-flight use.
+ * @param {ChatAttack[]} chatAttacks - Rows on the card about to post.
+ * @param {number} startIdx - Index of the first of them in the whole sequence.
+ * @param {number} total - Attacks in the whole sequence.
+ */
+async function _runPerUseScripts(actionUse, chatAttacks, startIdx, total) {
+  const runPerUse = game.modules.get("pf1-new-script-hooks")?.api?.runPerUse;
+  if (typeof runPerUse !== "function") return;
+
+  for (let i = 0; i < chatAttacks.length; i++) {
+    await runPerUse(actionUse, {
+      index: startIdx + i,
+      total,
+      chatAttack: chatAttacks[i],
+      sequential: true,
+    });
+    if (actionUse.shared?.reject) return;
   }
 }
 
