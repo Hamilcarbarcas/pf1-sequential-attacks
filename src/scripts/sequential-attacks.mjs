@@ -34,7 +34,11 @@ Hooks.once("init", () => {
 
 // ---- Wrapper Registration ---- //
 
-Hooks.once("ready", () => {
+// Registered at "setup", ahead of the usual "ready" registrations. libWrapper runs
+// same-type, same-priority wrappers last-registered-first, so this lands innermost:
+// when sequential mode takes over without chaining, only the system's own process()
+// is skipped, and every other module's wrapper has already run around it.
+Hooks.once("setup", () => {
   if (!game.modules.get("lib-wrapper")?.active) {
     console.warn("pf1-sequential-attacks | Sequential Attacks requires libWrapper. Feature disabled.");
     return;
@@ -49,6 +53,21 @@ Hooks.once("ready", () => {
 
   console.log("pf1-sequential-attacks | Sequential Attacks wrapper registered (MIXED priority).");
 });
+
+/**
+ * Rebuild `shared.rollData`, then fire `pf1SequentialAttacks.refreshRollData(actionUse)`.
+ *
+ * getRollData() replaces the object wholesale, dropping anything a module stamped onto
+ * it at pf1CreateActionUse. Vanilla builds it once per use; this module rebuilds it
+ * before the dialog, before each attack and before Edit Options, so the hook gives
+ * those modules a place to stamp again.
+ *
+ * @param {ActionUse} actionUse - The in-flight use.
+ */
+function _refreshRollData(actionUse) {
+  actionUse.getRollData();
+  Hooks.callAll("pf1SequentialAttacks.refreshRollData", actionUse);
+}
 
 // ---- Core Wrapper ---- //
 
@@ -103,7 +122,7 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   if (reqErr > 0) return { err: pf1.actionUse.ERR_REQUIREMENT, code: reqErr };
 
   await actionUse.autoSelectAmmo();
-  actionUse.getRollData();
+  _refreshRollData(actionUse);
 
   actionUse.shared.fullAttack = true;
   await actionUse.generateAttacks(true);
@@ -190,10 +209,8 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
 
   // ---- Phase 3: Sequential mode activates ---- //
   // Now it's safe to apply the dialog results — we own the rest of the flow.
-  // This necessarily skips downstream wrappers since we need per-attack control
-  // over the roll-and-post cycle. For weapon attacks (the primary use case)
-  // this is fine — Nevela's only runs custom logic for spells/consumables/classFeats,
-  // and those rarely have multi-attack full attacks.
+  // Not chaining skips only the system's process(): this wrapper is registered
+  // innermost (see Wrapper Registration), so other modules' wrappers have already run.
 
   // Snapshot the bonus arrays BEFORE alterRollData pushes to them.
   // This lets the "Edit Options" button reset and cleanly re-apply.
@@ -522,7 +539,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     // causes duplicate resource warnings and can corrupt derived data (e.g. actor size).
     // Foundry automatically re-prepares actors when their data changes (buff toggles, etc.),
     // so getRollData() already picks up the latest state.
-    actionUse.getRollData();
+    _refreshRollData(actionUse);
     const rollData = shared.rollData;
 
     // If charge was selected in the dialog, only the first attack should benefit.
@@ -1003,7 +1020,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     shared.charge = false;
 
     // Refresh rollData so the dialog reads fresh actor state
-    actionUse.getRollData();
+    _refreshRollData(actionUse);
 
     // Show the edit-options dialog (pre-populated, no attacks table, OK button)
     const form = await new SequentialEditDialog(actionUse, savedFormData).show();

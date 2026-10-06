@@ -99,6 +99,14 @@ is row `i` of the card's `system.rolls.attacks`. `message` is `null` if the card
 avoid handling the same attacks twice, skip the final `pf1PostActionUse` when
 `shared.sequentialAttack` is set.
 
+Sequential mode rebuilds `shared.rollData` before the attack dialog, before each attack, and
+before Edit Options, which drops anything stamped onto it at `pf1CreateActionUse`. To stamp it
+again:
+
+```js
+Hooks.on("pf1SequentialAttacks.refreshRollData", (actionUse) => { /* ... */ });
+```
+
 ## Compatibility
 
 - **Minimum Foundry Version**: 13
