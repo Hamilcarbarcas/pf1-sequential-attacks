@@ -20,6 +20,7 @@
 - **Sequential Full Attacks** now defaults to **on**, and is saved per user instead of per browser, so a player's choice follows them to any device. Choices saved under the old per-browser setting are not carried over: everyone starts on.
 - Tracker window restyled to match companion modules: amber accent on dark panels, a status rail on the current attack, and an amber-gradient primary button. Purely cosmetic — attack resolution is unchanged.
 - All user-facing text (setting, tracker window, buttons, dialog titles, error notifications) is now localizable via `game.i18n` (English `lang/en.json` included).
+- Power Attack numbers on attacks after the first now defer to astora-mod's Combat Options when it is installed and on, so a changed penalty or damage bonus holds for the whole sequence. Without it nothing changes.
 
 ### Fixed
 - **Edit Options** stayed greyed out after cancelling the edit dialog, until another attack was rolled or skipped. Tracker buttons now re-enable whenever an action finishes without redrawing the window.

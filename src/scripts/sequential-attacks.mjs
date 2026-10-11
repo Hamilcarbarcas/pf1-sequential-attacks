@@ -569,6 +569,13 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       const powerAttackPenalty = -(1 + Math.floor(rollData.attributes.bab.total / 4));
       rollData.powerAttackBonus = powerAttackBonus;
       rollData.powerAttackPenalty = powerAttackPenalty;
+
+      // astora-mod's Combat Options resolves these through its own change targets.
+      const resolved = game.astoraMod?.combatOptions?.powerAttack?.(actionUse);
+      if (resolved) {
+        rollData.powerAttackBonus = resolved.bonus;
+        rollData.powerAttackPenalty = resolved.penalty;
+      }
     } else {
       rollData.powerAttackBonus = 0;
       rollData.powerAttackPenalty = 0;
