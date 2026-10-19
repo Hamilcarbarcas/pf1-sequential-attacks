@@ -1,6 +1,9 @@
 {
-  "SEQ.Settings.Enabled.Name": "Sequential Full Attacks",
-  "SEQ.Settings.Enabled.Hint": "When enabled, full attacks are rolled one at a time, allowing retargeting and effect changes between attacks.",
+  "SEQ.Settings.Mode.Name": "Sequential Attacks",
+  "SEQ.Settings.Mode.Hint": "Roll attacks one at a time. Ask: the attack dialog offers it, unticked. Always: on for full attacks, quick rolls included.",
+  "SEQ.Settings.Mode.Off": "Off",
+  "SEQ.Settings.Mode.Ask": "Ask",
+  "SEQ.Settings.Mode.Always": "Always",
 
   "SEQ.Settings.LegacyTheme.Name": "Use Legacy Theme",
   "SEQ.Settings.LegacyTheme.Hint": "Restores the tracker window's original colour scheme (blue current attack, green resolved, gold skipped). Off by default, which uses the amber-on-dark theme shared with this author's other PF1 modules. Appearance only — nothing about how attacks resolve changes.",
@@ -16,10 +19,48 @@
   "SEQ.Button.EditOptions": "Edit Options",
   "SEQ.Button.Cancel": "Cancel",
   "SEQ.Button.RollAll": "Roll All Remaining ({count}) as one card",
+  "SEQ.Button.RollAllMulti": "Roll All Remaining ({count}), one card per action",
   "SEQ.Button.OK": "OK",
+
+  "SEQ.Dialog.Start": "Sequential attack",
+  "SEQ.Dialog.Join": "Add to sequential attack",
+
+  "SEQ.Block.Roll": "Roll this action's next attack",
+  "SEQ.Block.Edit": "Edit this action's options",
+  "SEQ.Block.Remove": "Remove this action",
+
+  "SEQ.Dialog.PresetNote": "Saving a preset. Nothing will be rolled.",
+
+  "SEQ.Routine.Header": "Attack Routines",
+  "SEQ.Routine.Create": "Add routine",
+  "SEQ.Routine.DefaultName": "New Routine",
+  "SEQ.Routine.Quickbar": "Quickbar",
+  "SEQ.Routine.QuickRoll": "Quick roll",
+  "SEQ.Routine.Use": "Use routine",
+  "SEQ.Routine.Edit": "Edit routine",
+  "SEQ.Routine.SheetType": "Attack Routine",
+  "SEQ.Routine.AttackCount": "Attacks: {count}",
+  "SEQ.Routine.NamePlaceholder": "Routine name",
+  "SEQ.Routine.Delete": "Delete routine",
+  "SEQ.Routine.DeleteConfirm": "Delete {name}? The attacks it links to stay on the sheet.",
+  "SEQ.Routine.EditPreset": "Set preset options",
+  "SEQ.Routine.EditPresetSet": "Edit preset options (set)",
+  "SEQ.Routine.Remove": "Remove from routine",
+  "SEQ.Routine.Empty": "Drag attacks here.",
+  "SEQ.Routine.Missing": "Missing item",
+
+  "SEQ.Warn.DuplicateExtra": "{extra} is ticked on more than one action in this sequence.",
+  "SEQ.Warn.BatchNotAdded": "{name} couldn't be added to the sequence.",
+  "SEQ.Warn.BatchOutside": "{name} resolved on its own, outside the sequence.",
+  "SEQ.Warn.PresetNoDialog": "{name} skipped its attack dialog, so no preset was saved.",
+  "SEQ.Warn.PresetOutside": "{name} resolved on its own; no preset was saved.",
+  "SEQ.Warn.RoutineNotFound": "No selected token or actor has that attack routine.",
+  "SEQ.Warn.RoutineEmpty": "{name} has no attacks.",
+  "SEQ.Warn.RoutineItemType": "{name} can't be part of an attack routine.",
 
   "SEQ.Error.Notify": "{msg} Check console.",
   "SEQ.Error.ResolveAttack": "Error resolving attack.",
   "SEQ.Error.ResolveRemaining": "Error resolving remaining attacks.",
-  "SEQ.Error.EditOptions": "Error editing attack options."
+  "SEQ.Error.EditOptions": "Error editing attack options.",
+  "SEQ.Error.RemoveBlock": "Error removing action."
 }

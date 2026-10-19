@@ -1,6 +1,52 @@
 {{!-- Sequential Attack Tracker --}}
 <div class="sequential-attack-tracker">
 
+  {{#if multi}}
+  {{!-- Several blocks: a header and attack list per action --}}
+  <div class="seq-attack-header">
+    <span class="seq-attack-title">{{ownerName}}</span>
+    <span class="seq-attack-progress">{{progress}}</span>
+  </div>
+
+  <div class="seq-block-list">
+    {{#each blocks}}
+    <div class="seq-block{{#if this.active}} seq-block-active{{/if}}{{#if this.done}} seq-block-done{{/if}}" data-block-id="{{this.id}}">
+      <div class="seq-block-header">
+        <span class="seq-block-title">{{this.itemName}} – {{this.actionName}}</span>
+        <span class="seq-block-progress">{{this.progress}}</span>
+        {{#if this.canRoll}}
+        <button type="button" class="seq-block-btn" data-action="rollBlock"
+                data-tooltip="{{localize "SEQ.Block.Roll"}}" aria-label="{{localize "SEQ.Block.Roll"}}">
+          <i class="fas fa-dice-d20"></i>
+        </button>
+        <button type="button" class="seq-block-btn" data-action="editBlock"
+                data-tooltip="{{localize "SEQ.Block.Edit"}}" aria-label="{{localize "SEQ.Block.Edit"}}">
+          <i class="fas fa-sliders-h"></i>
+        </button>
+        {{/if}}
+        {{#if this.canRemove}}
+        <button type="button" class="seq-block-btn seq-block-remove" data-action="removeBlock"
+                data-tooltip="{{localize "SEQ.Block.Remove"}}" aria-label="{{localize "SEQ.Block.Remove"}}">
+          <i class="fas fa-times"></i>
+        </button>
+        {{/if}}
+      </div>
+      {{#unless this.done}}
+      <div class="seq-attack-list">
+        {{#each this.rows}}
+        <div class="seq-attack-row seq-{{this.status}}">
+          <span class="seq-attack-icon"><i class="fas {{this.icon}}"></i></span>
+          <span class="seq-attack-label">{{this.label}}</span>
+          <span class="seq-attack-bonus">{{this.bonus}}</span>
+        </div>
+        {{/each}}
+      </div>
+      {{/unless}}
+    </div>
+    {{/each}}
+  </div>
+
+  {{else}}
   {{!-- Header --}}
   <div class="seq-attack-header">
     <span class="seq-attack-title">{{itemName}} — {{actionName}}</span>
@@ -17,6 +63,7 @@
     </div>
     {{/each}}
   </div>
+  {{/if}}
 
   {{!-- Primary buttons --}}
   <div class="seq-attack-buttons">
@@ -31,9 +78,12 @@
     <button type="button" class="seq-skip-btn" data-action="skip">
       <i class="fas fa-forward"></i> {{localize "SEQ.Button.Skip"}}
     </button>
+    {{!-- With several blocks, Edit Options lives on each block's header --}}
+    {{#unless multi}}
     <button type="button" class="seq-edit-btn" data-action="editOptions">
       <i class="fas fa-sliders-h"></i> {{localize "SEQ.Button.EditOptions"}}
     </button>
+    {{/unless}}
     <button type="button" class="seq-cancel-btn" data-action="cancel">
       <i class="fas fa-times"></i> {{localize "SEQ.Button.Cancel"}}
     </button>
@@ -44,7 +94,7 @@
   {{#if showRollAll}}
   <div class="seq-attack-buttons seq-attack-buttons-secondary">
     <button type="button" class="seq-all-btn" data-action="rollAll">
-      <i class="fas fa-dice"></i> {{localize "SEQ.Button.RollAll" count=remainingCount}}
+      <i class="fas fa-dice"></i> {{#if multi}}{{localize "SEQ.Button.RollAllMulti" count=remainingCount}}{{else}}{{localize "SEQ.Button.RollAll" count=remainingCount}}{{/if}}
     </button>
   </div>
   {{/if}}

@@ -29,7 +29,8 @@
     ]
   },
   "esmodules": [
-    "src/scripts/sequential-attacks.mjs"
+    "src/scripts/sequential-attacks.mjs",
+    "src/scripts/attack-routines.mjs"
   ],
   "styles": [
     "src/styles/sequential-attacks.css"

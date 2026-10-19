@@ -105,11 +105,151 @@
   flex-grow: 0.4;
 }
 
+/* ---- Blocks (several actions in one sequence) ---- */
+
+.sequential-attack-tracker .seq-block-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sequential-attack-tracker .seq-block-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+}
+
+.sequential-attack-tracker .seq-block-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.sequential-attack-tracker .seq-block-progress {
+  white-space: nowrap;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Icon-only controls. `height: auto` overrides core's fixed `--button-size`. */
+.sequential-attack-tracker .seq-block-header .seq-block-btn {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  line-height: 1;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.sequential-attack-tracker .seq-block-btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
 /* ---- Pulse animation for the current attack's icon (both themes) ---- */
 
 @keyframes seq-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* ==========================================================================
+ *  Attack Routines — the category injected at the top of the PF1 combat tab.
+ *  Rows reuse PF1's own item-list classes for their look; these rules only add
+ *  what a routine needs on top. Not themed: it lives on PF1's sheet, not the tracker.
+ * ========================================================================== */
+
+/* PF1's `.flexrow { display: flex }` outranks the browser's own [hidden] rule. */
+.seq-routines [hidden] {
+  display: none !important;
+}
+
+.seq-routines .seq-routine-toggle {
+  cursor: pointer;
+}
+
+.seq-routines .seq-routine-caret {
+  flex: 0 0 12px;
+  text-align: center;
+  transition: transform 0.15s;
+}
+
+.seq-routines .seq-routine.seq-collapsed .seq-routine-caret {
+  transform: rotate(-90deg);
+}
+
+/* Entries sit indented under their routine. */
+.seq-routines .seq-routine-child > .item-name,
+.seq-routines .seq-routine-empty {
+  padding-left: 20px;
+}
+
+.seq-routines .seq-routine-empty {
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.6;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.seq-routines .seq-entry-action {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.seq-routines .seq-routine-entry.seq-missing {
+  opacity: 0.45;
+  font-style: italic;
+}
+
+/* A set preset reads as "on" without adding a column. */
+.seq-routines .seq-entry-preset.seq-has-preset {
+  color: var(--color-text-hyperlink, #ff6400);
+}
+
+/* Routine sheet: PF1's item-sheet styles do the layout; these cover what PF1 styles
+   through its V1 editor wrapper, which the `<prose-mirror>` element doesn't use. */
+.seq-routine-sheet .sheet-header img.profile {
+  cursor: pointer;
+}
+
+.seq-routine-sheet .tab.description prose-mirror {
+  flex: 1;
+  min-height: 10rem;
+}
+
+/* Core styles the editor's toggle only under `.app` (V1 windows); an AppV2 window is
+   `.application`, so without this it falls back to the generic AppV2 button. Mirrors the
+   V1 look: a small pencil that appears on hover. No font-family here: on a button it
+   overrides Font Awesome's and turns the icon into a box. */
+.seq-routine-sheet prose-mirror button.toggle {
+  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: var(--form-field-height, 26px);
+  height: var(--form-field-height, 26px);
+  min-height: 0;
+  line-height: var(--form-field-height, 26px);
+  margin: 0 1px;
+  padding: 0;
+  background: rgba(255, 255, 240, 0.8);
+  border: 1px solid var(--color-border-light-primary, #b5b3a4);
+  border-radius: 3px;
+  box-shadow: none;
+  color: var(--color-text-dark-primary, #191813);
+  font-size: var(--font-size-14, 14px);
+  cursor: pointer;
+}
+
+.seq-routine-sheet prose-mirror:hover button.toggle:enabled {
+  display: block;
 }
 
 /* ==========================================================================
@@ -310,6 +450,57 @@
   border-top: none;
 }
 
+/* ---- Blocks ---- */
+
+.seq-theme-amber .seq-block-title {
+  font-weight: 600;
+  color: var(--seq-dim);
+}
+
+.seq-theme-amber .seq-block-progress {
+  color: var(--seq-faint);
+}
+
+/* The active block (Roll Next's target) carries the accent on its title. */
+.seq-theme-amber .seq-block-active .seq-block-title {
+  color: var(--seq-accent);
+}
+
+/* A finished block collapses to its header, dimmed. */
+.seq-theme-amber .seq-block-done .seq-block-title {
+  color: var(--seq-faint);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Head of a non-active block: marked, but without the current row's fill and pulse. */
+.seq-theme-amber .seq-attack-row.seq-head {
+  border-left-color: rgba(232, 166, 62, 0.4);
+  color: var(--seq-text);
+}
+
+.seq-theme-amber .seq-attack-row.seq-head .seq-attack-icon {
+  color: rgba(232, 166, 62, 0.6);
+}
+
+.seq-theme-amber .seq-block-header .seq-block-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--seq-dim);
+}
+
+.seq-theme-amber .seq-block-header .seq-block-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.seq-theme-amber .seq-block-header .seq-block-remove:hover:not(:disabled) {
+  background: rgba(200, 60, 60, 0.35);
+  border-color: rgba(200, 60, 60, 0.5);
+  color: #ffdada;
+}
+
 /* ==========================================================================
  *  Legacy theme — the module's original palette
  *
@@ -500,4 +691,56 @@
 
 .seq-theme-legacy .seq-close-btn:hover {
   background: rgba(80, 200, 120, 0.35);
+}
+
+/* ---- Blocks ---- */
+
+.seq-theme-legacy .seq-block-title {
+  font-weight: bold;
+}
+
+.seq-theme-legacy .seq-block-progress {
+  color: var(--color-text-dark-secondary, #aaa);
+}
+
+.seq-theme-legacy .seq-block-active .seq-block-title {
+  color: #b0dfff;
+}
+
+.seq-theme-legacy .seq-block-done {
+  opacity: 0.55;
+}
+
+.seq-theme-legacy .seq-block-done .seq-block-title {
+  text-decoration: line-through;
+  text-decoration-color: rgba(136, 136, 136, 0.4);
+}
+
+/* Head of a non-active block: outlined, without the current row's fill. */
+.seq-theme-legacy .seq-attack-row.seq-head {
+  border: 1px solid rgba(80, 160, 255, 0.35);
+  color: var(--color-text-dark-secondary, #ccc);
+}
+
+.seq-theme-legacy .seq-attack-row.seq-head .seq-attack-icon {
+  color: rgba(176, 223, 255, 0.6);
+}
+
+.seq-theme-legacy .seq-block-header .seq-block-btn {
+  border: 1px solid var(--color-border-light-2, #555);
+  background: rgba(40, 100, 180, 0.3);
+  color: #e0f0ff;
+}
+
+.seq-theme-legacy .seq-block-header .seq-block-btn:hover:not(:disabled) {
+  background: rgba(50, 120, 210, 0.5);
+}
+
+.seq-theme-legacy .seq-block-header .seq-block-remove {
+  background: rgba(180, 50, 50, 0.4);
+  color: #ffcccc;
+}
+
+.seq-theme-legacy .seq-block-header .seq-block-remove:hover:not(:disabled) {
+  background: rgba(200, 60, 60, 0.55);
 }
