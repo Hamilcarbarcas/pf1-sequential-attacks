@@ -262,6 +262,13 @@ Hooks.on("renderActorSheetPF", async (sheet, html) => {
   const groups = root?.querySelector('.tab[data-tab="combat"] .item-groups-list');
   if (!groups) return;
 
+  // V1 fires render hooks synchronously, most specific class first, so the parent-class
+  // hooks (astora-mod's renderActorSheet, which adds the Usage column) run after this one.
+  // Yield once so they finish before the column check below.
+  await null;
+  // astora-mod adds the Usage column after Charges; match it only when it is there.
+  const showUsage = !!groups.querySelector(".item-list-header > .item-usage");
+
   const collapsed = _collapsedSet();
   const routines = getRoutines(actor).map((routine) => {
     const key = `${actor.uuid}:${routine.id}`;
@@ -276,9 +283,7 @@ Hooks.on("renderActorSheetPF", async (sheet, html) => {
   const markup = await foundry.applications.handlebars.renderTemplate(TEMPLATE, {
     routines,
     owner: actor.isOwner,
-    // astora-mod adds a Usage column after Charges synchronously at render, before this
-    // section exists; match it only when it is there.
-    showUsage: !!groups.querySelector(".item-list-header > .item-usage"),
+    showUsage,
   });
   // The sheet may have re-rendered while the template loaded.
   if (!groups.isConnected) return;
