@@ -34,7 +34,7 @@ A Foundry VTT module that allows full attacks to be resolved one attack at a tim
 ### The Sequential Attacks setting
 Each player picks a mode under **Sequential Attacks** in the module settings. The choice is saved per user, so it follows them to any browser.
 
-- **Always (default)** — the attack dialog gains a **Sequential attack** checkbox, ticked for full attacks or when a tracker is already open, unticked otherwise.
+- **Always (default)** — the attack dialog gains a **Sequential attack** checkbox, ticked for full attacks or when a tracker is already open, unticked otherwise. Ticking Haste, Rapid Shot, or Manyshot on a one-attack weapon ticks it too, unless you've already set it yourself.
 - **Ask** — the same checkbox, always unticked unless a tracker is already open.
 - **Off** — the module stays out of the way entirely.
 

@@ -112,6 +112,9 @@ Hooks.on("renderAttackDialog", (app, html) => {
   const state = shared._seqDialog;
   if (!state) return;
   state.rendered = true;
+  // Haste / Rapid Shot / Manyshot splice entries into the list and re-render, so an
+  // untouched Always default tracks the current count rather than the generated one.
+  if (state.followCount && !state.touched) state.checked = shared.attacks.length > 1;
   if (!buttonRow) return;
 
   const row = document.createElement("div");
@@ -237,7 +240,7 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
     return wrapped({ skipDialog });
   }
 
-  const multi = shared.attacks.length > 1;
+  let multi = shared.attacks.length > 1;
 
   // Skipped through the argument (pf1-new-script-hooks absent): there is no dialog to
   // consume, so decide now and hand off untouched when the use doesn't sequence.
@@ -266,6 +269,7 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
     const seqDialog = {
       checked: trackerOpen || (mode === "always" && multi),
       joining: trackerOpen,
+      followCount: mode === "always" && !trackerOpen,
       touched: false,
       rendered: false,
     };
@@ -279,6 +283,9 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
       console.debug("PF1 | Sequential attack cancelled in attack prompt.");
       return;
     }
+
+    // The dialog's Haste / Rapid Shot / Manyshot toggles add entries to the list.
+    multi = shared.attacks.length > 1;
 
     // Check if a pre-use script (e.g. pf1-new-script-hooks) set the reject flag
     if (shared.reject) {
@@ -309,40 +316,24 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
     //      generateAttacks) which is safe, and then hit our patched dialog.
     actionUse.createAttackDialog = async () => form;
 
-    // Ammo selection made in the dialog lives on shared.attacks[i].ammo — the dialog
-    // mutates the attack entries directly and does NOT record the choice in `form` or
-    // in item.system.ammo.default (only the "set as default" control does that). But
-    // wrapped() re-runs generateAttacks(), which rebuilds shared.attacks from the item's
-    // DEFAULT ammo, silently discarding the user's per-attack pick (the patched dialog
-    // above never re-shows the UI to re-apply it). Snapshot the selection by index and
-    // patch generateAttacks so it re-applies after each regeneration in the chain.
-    const usesAmmo = !!action.ammo?.type;
-    const selectedAmmoIds = shared.attacks.map((atk) => atk.ammo?.id ?? null);
-    if (usesAmmo && selectedAmmoIds.some(Boolean)) {
-      const originalGenerate = actionUse.generateAttacks;
-      actionUse.generateAttacks = function (forceFullAttack) {
-        const generated = originalGenerate.call(this, forceFullAttack);
-        const reapply = (attacks) => {
-          const ammos = actionUse.getAmmo();
-          attacks.forEach((atk, i) => {
-            if (i >= selectedAmmoIds.length) return;
-            const id = selectedAmmoIds[i];
-            atk.ammo = id ? (ammos.find((o) => o.id === id) ?? atk.ammo) : null;
-          });
-          return attacks;
-        };
-        return generated instanceof Promise ? generated.then(reapply) : reapply(generated);
-      };
-      console.debug("PF1 | Sequential mode: action does not qualify, chaining to wrapped() (preserving ammo selection).");
-      try {
-        return await wrapped({ skipDialog: false });
-      } finally {
-        delete actionUse.generateAttacks; // restore the prototype method
-      }
-    }
-
+    // The dialog edits shared.attacks in place: Haste / Rapid Shot / Manyshot entries are
+    // spliced in and per-attack ammo picks are written onto the entries, none of it
+    // recorded in `form`. wrapped() re-runs generateAttacks(), which rebuilds the list
+    // from the action alone, and the patched dialog above never re-applies those edits.
+    // Patch generateAttacks to put the dialog's list back after each regeneration.
+    const dialogAttacks = [...shared.attacks];
+    const originalGenerate = actionUse.generateAttacks;
+    actionUse.generateAttacks = function (forceFullAttack) {
+      const generated = originalGenerate.call(this, forceFullAttack);
+      const restore = () => (shared.attacks = [...dialogAttacks]);
+      return generated instanceof Promise ? generated.then(restore) : restore();
+    };
     console.debug("PF1 | Sequential mode: action does not qualify, chaining to wrapped().");
-    return wrapped({ skipDialog: false });
+    try {
+      return await wrapped({ skipDialog: false });
+    } finally {
+      delete actionUse.generateAttacks; // restore the prototype method
+    }
   }
 
   // ---- Phase 3: Sequential mode activates ---- //
