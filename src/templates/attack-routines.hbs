@@ -21,12 +21,12 @@
 
   {{#each routines as |routine|}}
   {{!-- Routine row: the only row with a use button --}}
-  <li class="item flexrow seq-routine seq-drop-target{{#if routine.collapsed}} seq-collapsed{{/if}}"
+  <li class="item flexrow seq-routine{{#if routine.derived}} seq-derived{{else}} seq-drop-target{{/if}}{{#if routine.collapsed}} seq-collapsed{{/if}}"
       data-routine-id="{{routine.id}}" draggable="true">
     <div class="item-name seq-routine-toggle">
       <i class="fa-solid fa-caret-down seq-routine-caret" inert></i>
       <div class="item-image" style='background-image: url("{{routine.img}}")'></div>
-      <h4>{{routine.name}}</h4>
+      <h4>{{#if routine.derived}}<i class="fa-solid fa-bolt seq-derived-mark" data-tooltip="SEQ.Routine.Derived"></i> {{/if}}{{routine.name}}</h4>
     </div>
     <div class="item-detail item-attacks"></div>
     <div class="item-detail item-damage"></div>
@@ -34,7 +34,7 @@
     <div class="item-detail item-actions">
       <div class="item-action">
         {{#if routine.entries.length}}
-        <a class="item-control seq-routine-use" data-tooltip="SEQ.Routine.Use">
+        <a class="item-control action roll seq-routine-use" data-tooltip="SEQ.Routine.Use">
           <i class="fa-solid fa-dice-d20" inert></i>
         </a>
         {{/if}}
@@ -45,16 +45,19 @@
     {{#if @root.owner}}
     <div class="item-controls">
       <a class="item-control seq-routine-edit" data-tooltip="SEQ.Routine.Edit"><i class="fa-solid fa-edit" inert></i></a>
+      {{#unless routine.derived}}
       <a class="item-control seq-routine-delete" data-tooltip="SEQ.Routine.Delete"><i class="fa-solid fa-trash" inert></i></a>
+      {{/unless}}
     </div>
     {{/if}}
   </li>
 
-  {{!-- Entries: shortcuts to items on the actor, never items themselves --}}
+  {{!-- Entries: shortcuts to items on the actor, never items themselves. A derived routine's
+       entries are its provider's: no dragging, dropping, or removing. --}}
   {{#each routine.entries as |entry|}}
-  <li class="item flexrow seq-routine-child seq-routine-entry seq-drop-target{{#if entry.missing}} seq-missing{{/if}}"
+  <li class="item flexrow seq-routine-child seq-routine-entry{{#unless routine.derived}} seq-drop-target{{/unless}}{{#if entry.missing}} seq-missing{{/if}}"
       data-routine-id="{{routine.id}}" data-entry-id="{{entry.id}}"
-      {{#if @root.owner}}draggable="true"{{/if}} {{#if routine.collapsed}}hidden{{/if}}>
+      {{#if @root.owner}}{{#unless routine.derived}}draggable="true"{{/unless}}{{/if}} {{#if routine.collapsed}}hidden{{/if}}>
     <div class="item-name">
       <div class="item-image" style='background-image: url("{{entry.img}}")'></div>
       <h4>{{entry.name}}{{#if entry.actionName}} <span class="seq-entry-action">({{entry.actionName}})</span>{{/if}}</h4>
@@ -92,7 +95,9 @@
       {{#unless entry.missing}}
       <a class="item-control seq-entry-open" data-tooltip="PF1.EditItem"><i class="fa-solid fa-edit" inert></i></a>
       {{/unless}}
+      {{#unless routine.derived}}
       <a class="item-control seq-entry-remove" data-tooltip="SEQ.Routine.Remove"><i class="fa-solid fa-link-slash" inert></i></a>
+      {{/unless}}
     </div>
     {{/if}}
   </li>

@@ -10,6 +10,15 @@
 ## [Unreleased]
 
 ### Added
+- **Routines from other modules.** A module can now add attack routines built from the
+  character's current state (for example, what is equipped), shown at the top of Attack Routines
+  with a bolt icon while they apply. Their Quick roll, Quickbar, description, and per-weapon presets
+  are saved like any routine's. API: `registerRoutineProvider`.
+- **Linked Single / Full.** A routine entry (or a `startSequence` entry) marked `linkFullAttack`
+  follows the first attack's Single or Full choice: its dialog shows only that button, and a quick
+  roll uses it.
+- **Presets fill other modules' checkboxes** in a shown attack dialog, such as roll-bonuses'
+  conditional modifiers. Before, they only applied on a quick roll.
 - **Several actions in one sequence.** With a tracker open, use another attack from the same actor and it joins the tracker (claw, claw, bite). Each action gets its own header with Roll, Edit Options and Remove controls; its attacks keep their order, but you can switch between actions freely. Roll Next continues with the action you rolled last, and Roll All Remaining posts one card per action. Each action spends its own charges and runs its own script calls. A warning appears if Haste or Rapid Shot is ticked on more than one action.
 - **Sequential attack checkbox** in the attack dialog, which decides whether the attack starts or joins a sequence. Untick it for an attack that isn't part of the full attack.
 - **Attack Routines.** A new category at the top of the combat tab for saved sets of attacks. Drag attacks from the sheet onto a routine, reorder them, and set preset dialog options per attack through the real attack dialog without rolling anything. Using a routine starts every attack as one sequence, either quick-rolled with the presets or through each dialog filled in from them. Routines can appear with the actor's quick actions on the sheet and token HUD, and can be dragged to the hotbar.

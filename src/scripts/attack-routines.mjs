@@ -47,6 +47,131 @@ function updateRoutine(actor, routineId, change) {
   });
 }
 
+// ---- Derived routines (DESIGN.md §10b) ---- //
+
+const DERIVED_FLAG = "derived";
+
+/** Provider id → `{ routines(actor) }`, in registration order. */
+const providers = new Map();
+
+/**
+ * Let another module supply routines built from the actor's current state. `routines(actor)`
+ * is called on every sheet render, use, and quickbar build, so it must be synchronous and
+ * cheap, and return only routines the actor can use now:
+ * `[{ key, name, img, entries: [{ itemId, actionId, force, linkFullAttack }] }]`. `force`
+ * holds dialog form keys the provider decides, laid over the entry's preset. `linkFullAttack`
+ * makes the entry take Single or Full from the routine's first block (DESIGN.md §10.5).
+ *
+ * @param {string} id - Usually the module id. No ":" allowed.
+ * @param {{routines: (actor: Actor) => object[]}} provider
+ */
+function registerRoutineProvider(id, provider) {
+  if (!id || id.includes(":") || typeof provider?.routines !== "function") {
+    throw new Error(`${MODULE_ID} | registerRoutineProvider: needs an id without ":" and a routines(actor) function.`);
+  }
+  providers.set(id, provider);
+}
+
+function unregisterRoutineProvider(id) {
+  providers.delete(id);
+}
+
+/** `[providerId, key]` for a derived routine id; stored routine ids hold no ":". */
+function _splitDerivedId(routineId) {
+  const at = typeof routineId === "string" ? routineId.indexOf(":") : -1;
+  return at > 0 ? [routineId.slice(0, at), routineId.slice(at + 1)] : null;
+}
+
+function _derivedSettings(actor, providerId, key) {
+  return foundry.utils.deepClone(actor?.getFlag(MODULE_ID, DERIVED_FLAG)?.[providerId]?.[key] ?? {});
+}
+
+/**
+ * The providers' routines for this actor, in the stored routines' shape, with `derived: true`
+ * and each entry's `force`. Presets are stored per item, so they follow a weapon across swaps.
+ *
+ * @param {Actor} actor
+ * @returns {object[]}
+ */
+function getDerivedRoutines(actor) {
+  if (!actor) return [];
+  const routines = [];
+  for (const [providerId, provider] of providers) {
+    let list;
+    try {
+      list = provider.routines(actor) ?? [];
+    } catch (err) {
+      console.error(`${MODULE_ID} | Routine provider "${providerId}" failed.`, err);
+      continue;
+    }
+    for (const routine of list) {
+      if (!routine?.key || !routine.entries?.length) continue;
+      const settings = _derivedSettings(actor, providerId, routine.key);
+      routines.push({
+        id: `${providerId}:${routine.key}`,
+        derived: true,
+        name: routine.name,
+        img: routine.img ?? null,
+        description: settings.description ?? "",
+        quickbar: !!settings.quickbar,
+        quickRoll: !!settings.quickRoll,
+        entries: routine.entries.map((entry, index) => ({
+          id: `${index}-${entry.itemId}`,
+          itemId: entry.itemId,
+          actionId: entry.actionId ?? null,
+          presets: settings.presets?.[entry.itemId] ?? {},
+          force: entry.force ?? {},
+          linkFullAttack: !!entry.linkFullAttack,
+        })),
+      });
+    }
+  }
+  return routines;
+}
+
+/** Derived routines first, then the stored ones, as the combat tab shows them. */
+function _allRoutines(actor) {
+  return [...getDerivedRoutines(actor), ...getRoutines(actor)];
+}
+
+/**
+ * Change a derived routine's saved settings. Presets for items no longer on the actor are
+ * dropped on the way.
+ *
+ * @param {Actor} actor
+ * @param {string} routineId
+ * @param {(settings: object) => (boolean|void)} change - Return false to skip the write.
+ */
+async function updateDerived(actor, routineId, change) {
+  const [providerId, key] = _splitDerivedId(routineId) ?? [];
+  if (!providerId) return;
+  const settings = _derivedSettings(actor, providerId, key);
+  if (change(settings) === false) return;
+  const path = `flags.${MODULE_ID}.${DERIVED_FLAG}.${providerId}.${key}`;
+  const update = { [path]: settings };
+  for (const itemId of Object.keys(settings.presets ?? {})) {
+    if (actor.items.get(itemId)) continue;
+    delete settings.presets[itemId];
+    update[`${path}.presets.-=${itemId}`] = null;
+  }
+  await actor.update(update);
+}
+
+/** One saved field of either kind of routine. */
+function _saveRoutineField(actor, routineId, field, value) {
+  const change = (target) => {
+    target[field] = value;
+  };
+  return _splitDerivedId(routineId) ? updateDerived(actor, routineId, change) : updateRoutine(actor, routineId, change);
+}
+
+/** The entry's presets with its provider's forced keys laid over its default action's. */
+function _presetsWithForce(entry) {
+  const presets = entry.presets ?? {};
+  if (!entry.actionId || !entry.force || !Object.keys(entry.force).length) return presets;
+  return { ...presets, [entry.actionId]: { ...(presets[entry.actionId] ?? {}), ...entry.force } };
+}
+
 function _findEntry(routines, routineId, entryId) {
   const routine = routines.find((r) => r.id === routineId);
   const index = routine?.entries.findIndex((e) => e.id === entryId) ?? -1;
@@ -92,7 +217,9 @@ function _setCollapsed(key, collapsed) {
 async function useRoutine(routineId, { subject = null, actorId = null, shift = null } = {}) {
   const found = _findRoutine(routineId, subject, actorId);
   if (!found) {
-    ui.notifications.warn(game.i18n.localize("SEQ.Warn.RoutineNotFound"));
+    // A derived routine is asked for again here, so one drawn earlier may be gone now.
+    const key = _splitDerivedId(routineId) ? "SEQ.Warn.DerivedUnavailable" : "SEQ.Warn.RoutineNotFound";
+    ui.notifications.warn(game.i18n.localize(key));
     return null;
   }
   const { routine, who } = found;
@@ -104,10 +231,12 @@ async function useRoutine(routineId, { subject = null, actorId = null, shift = n
   // Shift flips the routine's own quick-roll choice, as it flips PF1's skip-prompt setting.
   const shiftHeld = shift ?? game.keyboard?.isModifierActive?.("Shift") ?? false;
   const skipDialog = !!routine.quickRoll !== shiftHeld;
+  // A derived entry always names its action: the provider chose it, so no picker.
   const entries = routine.entries.map((entry) => ({
     item: entry.itemId,
-    action: skipDialog ? entry.actionId || undefined : undefined,
-    presets: entry.presets ?? {},
+    action: skipDialog || routine.derived ? entry.actionId || undefined : undefined,
+    presets: routine.derived ? _presetsWithForce(entry) : (entry.presets ?? {}),
+    linkFullAttack: !!entry.linkFullAttack,
   }));
 
   return game.modules.get(MODULE_ID).api.startSequence(who, entries, { skipDialog });
@@ -126,7 +255,7 @@ function _findRoutine(routineId, subject, actorId) {
   }
   for (const who of candidates) {
     const actor = who?.documentName === "Token" ? who.actor : who;
-    const routine = getRoutines(actor).find((r) => r.id === routineId);
+    const routine = _allRoutines(actor).find((r) => r.id === routineId);
     if (routine) return { routine, who };
   }
   return null;
@@ -145,9 +274,13 @@ function _findRoutine(routineId, subject, actorId) {
  * @param {TokenDocument|null} token
  */
 async function editPreset(actor, routineId, entryId, token) {
-  const { entry } = _findEntry(getRoutines(actor), routineId, entryId);
+  const derived = !!_splitDerivedId(routineId);
+  const { entry } = _findEntry(_allRoutines(actor), routineId, entryId);
   const item = entry ? actor.items.get(entry.itemId) : null;
   if (!item) return;
+  // A derived entry's action is the provider's, and its forced keys show as they will apply.
+  const actionId = derived ? entry.actionId || undefined : undefined;
+  const presets = derived ? _presetsWithForce(entry) : (entry.presets ?? {});
 
   const result = await new Promise((resolve) => {
     let captured = false;
@@ -156,7 +289,7 @@ async function editPreset(actor, routineId, entryId, token) {
       resolve(value);
     };
     item
-      .use({ skipDialog: false, token: token ?? undefined, options: { sequentialAttacks: { capture, presets: entry.presets ?? {} } } })
+      .use({ actionId, skipDialog: false, token: token ?? undefined, options: { sequentialAttacks: { capture, presets } } })
       .then(() => {
         // Unreported means another module's wrapper resolved the use before this one ran.
         if (!captured) {
@@ -170,6 +303,14 @@ async function editPreset(actor, routineId, entryId, token) {
       });
   });
   if (!result) return;
+
+  if (derived) {
+    await updateDerived(actor, routineId, (settings) => {
+      settings.presets ??= {};
+      settings.presets[item.id] = { ...(settings.presets[item.id] ?? {}), [result.actionId]: result.form };
+    });
+    return;
+  }
 
   await updateRoutines(actor, (routines) => {
     const { entry: target } = _findEntry(routines, routineId, entryId);
@@ -270,7 +411,7 @@ Hooks.on("renderActorSheetPF", async (sheet, html) => {
   const showUsage = !!groups.querySelector(".item-list-header > .item-usage");
 
   const collapsed = _collapsedSet();
-  const routines = getRoutines(actor).map((routine) => {
+  const routines = _allRoutines(actor).map((routine) => {
     const key = `${actor.uuid}:${routine.id}`;
     return {
       ...routine,
@@ -376,7 +517,7 @@ function _activateSection(sheet, section) {
   });
 
   on(".seq-entry-open", "click", (event) => {
-    const { entry } = _findEntry(getRoutines(actor), routineIdOf(event.currentTarget), entryIdOf(event.currentTarget));
+    const { entry } = _findEntry(_allRoutines(actor), routineIdOf(event.currentTarget), entryIdOf(event.currentTarget));
     actor.items.get(entry?.itemId)?.sheet.render(true, { focus: true });
   });
 
@@ -501,7 +642,7 @@ class RoutineSheet extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   get routine() {
-    return getRoutines(this.actor).find((r) => r.id === this.routineId);
+    return _allRoutines(this.actor).find((r) => r.id === this.routineId);
   }
 
   /** @override — PF1's own "Item – Actor" title format. */
@@ -514,6 +655,8 @@ class RoutineSheet extends HandlebarsApplicationMixin(ApplicationV2) {
     const routine = this.routine ?? {};
     const description = routine.description ?? "";
     return {
+      // A derived routine's name and image are its provider's.
+      derived: !!_splitDerivedId(this.routineId),
       name: routine.name ?? "",
       img: _routineImg(this.actor, routine.entries ? routine : { entries: [] }),
       quickbar: !!routine.quickbar,
@@ -536,7 +679,7 @@ class RoutineSheet extends HandlebarsApplicationMixin(ApplicationV2) {
 
     form.querySelector('input[name="name"]').addEventListener("change", async (event) => {
       const name = event.currentTarget.value.trim();
-      if (!name) return;
+      if (!name || context.derived) return;
       await updateRoutine(this.actor, this.routineId, (routine) => {
         routine.name = name;
       });
@@ -545,22 +688,18 @@ class RoutineSheet extends HandlebarsApplicationMixin(ApplicationV2) {
 
     for (const input of form.querySelectorAll('.sidebar input[type="checkbox"]')) {
       input.addEventListener("change", () => {
-        updateRoutine(this.actor, this.routineId, (routine) => {
-          routine[input.name] = input.checked;
-        });
+        _saveRoutineField(this.actor, this.routineId, input.name, input.checked);
       });
     }
 
     form.querySelector('prose-mirror[name="description"]')?.addEventListener("change", async (event) => {
-      const value = event.currentTarget.value ?? "";
-      await updateRoutine(this.actor, this.routineId, (routine) => {
-        routine.description = value;
-      });
+      await _saveRoutineField(this.actor, this.routineId, "description", event.currentTarget.value ?? "");
       this.render();
     });
   }
 
   static #onEditImage(event, target) {
+    if (_splitDerivedId(this.routineId)) return;
     const current = this.routine?.img ?? "";
     new foundry.applications.apps.FilePicker.implementation({
       type: "image",
@@ -581,7 +720,8 @@ Hooks.on("updateActor", (actor, change) => {
   const ids = new Set(getRoutines(actor).map((r) => r.id));
   const prefix = `pf1-seq-routine-${actor.uuid.replaceAll(".", "-")}-`;
   for (const app of foundry.applications.instances.values()) {
-    if (app instanceof RoutineSheet && app.id.startsWith(prefix) && !ids.has(app.routineId)) app.close();
+    if (!(app instanceof RoutineSheet) || !app.id.startsWith(prefix) || _splitDerivedId(app.routineId)) continue;
+    if (!ids.has(app.routineId)) app.close();
   }
 });
 
@@ -589,7 +729,7 @@ Hooks.on("updateActor", (actor, change) => {
 
 /** Routines flagged for the quickbar, in sheet order. */
 function _quickRoutines(actor) {
-  return getRoutines(actor).filter((r) => r.quickbar && r.entries.length);
+  return _allRoutines(actor).filter((r) => r.quickbar && r.entries.length);
 }
 
 /**
@@ -676,7 +816,7 @@ Hooks.on("hotbarDrop", (bar, data, slot) => {
 
 async function _createRoutineMacro({ actorId, routineId }, slot) {
   const actor = game.actors.get(actorId);
-  const routine = getRoutines(actor).find((r) => r.id === routineId);
+  const routine = _allRoutines(actor).find((r) => r.id === routineId);
   if (!routine) return;
 
   const command = `game.modules.get("${MODULE_ID}")?.api?.useRoutine("${routineId}", { actorId: "${actorId}" });`;
@@ -694,7 +834,14 @@ async function _createRoutineMacro({ actorId, routineId }, slot) {
 
 Hooks.once("init", () => {
   const module = game.modules.get(MODULE_ID);
-  module.api = { ...(module.api ?? {}), useRoutine, getRoutines };
+  module.api = {
+    ...(module.api ?? {}),
+    useRoutine,
+    getRoutines,
+    getDerivedRoutines,
+    registerRoutineProvider,
+    unregisterRoutineProvider,
+  };
   // Cached up front so the section lands in the same frame as the sheet and the
   // scroll position PF1 restores after a render doesn't jump.
   foundry.applications.handlebars.loadTemplates([TEMPLATE, SHEET_TEMPLATE]);

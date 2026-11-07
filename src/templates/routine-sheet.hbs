@@ -2,11 +2,11 @@
 <form class="flexcol editable" autocomplete="off" data-tooltip-class="pf1">
 
   <header class="sheet-header flexrow">
-    <img class="profile" src="{{img}}" data-tooltip="{{name}}" data-action="editImage">
+    <img class="profile" src="{{img}}" data-tooltip="{{name}}" {{#unless derived}}data-action="editImage"{{/unless}}>
 
     <div class="header-details flexrow">
       <h1 class="item-name">
-        <input name="name" type="text" value="{{name}}" placeholder="{{localize "SEQ.Routine.NamePlaceholder"}}">
+        <input name="name" type="text" value="{{name}}" placeholder="{{localize "SEQ.Routine.NamePlaceholder"}}" {{#if derived}}readonly data-tooltip="SEQ.Routine.Derived"{{/if}}>
       </h1>
     </div>
   </header>

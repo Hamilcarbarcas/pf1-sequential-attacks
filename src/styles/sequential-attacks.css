@@ -208,6 +208,22 @@
   font-style: italic;
 }
 
+/* A routine built from equipped items (DESIGN.md §10b). */
+.seq-routines .seq-derived-mark {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* The preset control sits where PF1's d20 does on item rows; match its size and ink. The routine's
+   own use button carries PF1's `action roll` classes and takes its look from them. */
+.seq-routines .seq-entry-preset {
+  color: var(--color-text-dark-primary);
+}
+
+.seq-routines .seq-entry-preset > i {
+  font-size: var(--font-size-16);
+}
+
 /* A set preset reads as "on" without adding a column. */
 .seq-routines .seq-entry-preset.seq-has-preset {
   color: var(--color-text-hyperlink, #ff6400);

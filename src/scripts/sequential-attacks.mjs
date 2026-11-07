@@ -150,6 +150,47 @@ function _prefillDialog(app, preset) {
   if ("concentration" in preset) app.flags.concentration = !!preset.concentration;
 }
 
+/** Whether a preset key is one of PF1's own dialog fields, which _prefillDialog and useOptions cover. */
+function _isPF1PresetKey(key) {
+  return key in PRESET_USE_OPTIONS || PRESET_ATTRIBUTES.includes(key) || key.startsWith("conditionals.")
+    || key === "fullAttack" || key === "concentration";
+}
+
+/**
+ * Other modules' checkboxes in a preset (roll-bonuses' conditional modifiers, saved under
+ * their raw input name): tick or untick them on the dialog's first render (DESIGN.md §10b).
+ * Those modules inject on later render hooks (`renderApplication` fires after this one), so
+ * this waits for the hook chain to finish. `change` lets each module record the new state.
+ */
+Hooks.on("renderAttackDialog", (app, html) => {
+  const preset = app.actionUse?.shared?._seqPreset;
+  if (!preset || app._seqExtPrefilled) return;
+  app._seqExtPrefilled = true;
+  const root = html instanceof HTMLElement ? html : html[0];
+  queueMicrotask(() => {
+    for (const [key, value] of Object.entries(preset)) {
+      if (typeof value !== "boolean" || _isPF1PresetKey(key)) continue;
+      const input = root?.querySelector(`input[type="checkbox"][name="${CSS.escape(key)}"]`);
+      if (!input || input.checked === value) continue;
+      input.checked = value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+});
+
+/**
+ * A routine entry linked to the first block (DESIGN.md §10.5) offers only the button that
+ * block chose. Drawn on every render, since PF1 re-renders the dialog on each change.
+ */
+Hooks.on("renderAttackDialog", (app, html) => {
+  const linked = app.actionUse?.shared?._seqLinkedFull;
+  if (typeof linked !== "boolean") return;
+  const root = html instanceof HTMLElement ? html : html[0];
+  root?.querySelector(`button[name="${linked ? "attack_single" : "attack_full"}"]`)?.remove();
+  const kept = root?.querySelector(`button[name="${linked ? "attack_full" : "attack_single"}"]`);
+  if (kept) kept.dataset.tooltip = "SEQ.Dialog.LinkedFullAttack";
+});
+
 // Preset capture with pf1-new-script-hooks: take the form here and reject, which stops
 // that module before pf1PostAttackDialog, so Pre-Use scripts never run.
 Hooks.on("pf1AttackDialogResolved", (actionUse, form) => {
@@ -395,8 +436,11 @@ async function _batchProcess(actionUse, batch, skipDialog) {
   shared.firstAttackBonus = [];
   shared.firstAttackDamageBonus = [];
 
-  // An Attack Routine preset for the action actually picked (DESIGN.md §10a).
-  const preset = batch.presets?.[actionUse.action.id] ?? null;
+  // An Attack Routine preset for the action actually picked (DESIGN.md §10a), with Single
+  // or Full laid over it when the entry follows the first block (§10.5).
+  const linked = typeof batch.fullAttack === "boolean" ? batch.fullAttack : null;
+  let preset = batch.presets?.[actionUse.action.id] ?? null;
+  if (linked !== null) preset = { ...(preset ?? {}), fullAttack: linked };
   _applyPresetOptions(actionUse, preset);
 
   // With pf1-new-script-hooks the argument arrives false and its createAttackDialog()
@@ -406,15 +450,18 @@ async function _batchProcess(actionUse, batch, skipDialog) {
     form = _presetQuickForm(actionUse, preset);
   } else {
     shared._seqPreset = preset;
+    shared._seqLinkedFull = linked;
     try {
       form = await actionUse.createAttackDialog();
     } finally {
       delete shared._seqPreset;
+      delete shared._seqLinkedFull;
     }
     // A pf1-new-script-hooks skip resolves {} without rendering; the preset stands in for it.
     if (form && !Object.keys(form).length && preset) form = _presetQuickForm(actionUse, preset);
   }
   if (!form) return fail("cancelled");
+  if (linked !== null) form.fullAttack = linked;
   if (shared.reject) return fail("rejected");
 
   const prepared = await _prepareBlock(actionUse, form);
@@ -1825,9 +1872,12 @@ class SequentialEditDialog extends pf1.applications.AttackDialog {
  * An entry that can't join is left out with a warning (DESIGN.md §10.4); one whose
  * dialog was cancelled is left out silently.
  *
+ * An entry with `linkFullAttack` takes Single or Full from the first entry that joined
+ * (DESIGN.md §10.5): its dialog offers only that button, and a quick roll uses it.
+ *
  * @param {Actor|TokenDocument|Token|string} subject - The attacker, or its uuid.
- * @param {Array<Item|string|{item: Item|string, action?: string}>} entries - Items as
- *   documents, ids on the attacker, or uuids, each optionally with an action id.
+ * @param {Array<Item|string|{item: Item|string, action?: string, presets?: object, linkFullAttack?: boolean}>} entries -
+ *   Items as documents, ids on the attacker, or uuids, each optionally with an action id.
  * @param {object} [options]
  * @param {boolean} [options.skipDialog=false] - Quick-roll every entry.
  * @returns {Promise<{result: string, dropped: Array<{entry: *, reason: string}>}>} Settles
@@ -1848,13 +1898,19 @@ async function startSequence(subject, entries, { skipDialog = false } = {}) {
   }
 
   const dropped = [];
+  let firstFullAttack = null;
   for (const entry of entries) {
     const item = _resolveEntryItem(attacker.actor, entry);
+    const linked = entry?.linkFullAttack ? firstFullAttack : null;
     let reason;
     if (!item) reason = "notFound";
     else if (_ownerOfActor(item.actor)?.uuid !== owner.uuid) reason = "owner";
     else if (!item.hasAction || !_canJoinSequence(item)) reason = "type";
-    else reason = await _useIntoSequence(tracker, item, entry, attacker.token, skipDialog);
+    else {
+      const joined = await _useIntoSequence(tracker, item, entry, attacker.token, skipDialog, linked);
+      reason = joined.reason;
+      if (joined.block && firstFullAttack === null) firstFullAttack = !!joined.block.actionUse.shared.fullAttack;
+    }
 
     if (reason) {
       dropped.push({ entry, reason });
@@ -1885,16 +1941,18 @@ async function startSequence(subject, entries, { skipDialog = false } = {}) {
  * item.use() one entry into the tracker. Settles as soon as the wrapper reports; the use
  * itself stays pending until the sequence ends.
  *
- * @returns {Promise<string|null>} null when the entry joined, otherwise why it didn't:
- *   a reason reported by _batchProcess(), "cancelled" for a cancelled action picker,
- *   "outside" when the use resolved without reaching the sequence, or "error".
+ * @param {boolean|null} fullAttack - Single (false) or Full (true) fixed by a linked entry.
+ * @returns {Promise<{reason: string|null, block?: object}>} `reason` is null when the entry
+ *   joined, otherwise why it didn't: a reason reported by _batchProcess(), "cancelled" for
+ *   a cancelled action picker, "outside" when the use resolved without reaching the
+ *   sequence, or "error".
  */
-function _useIntoSequence(tracker, item, entry, token, skipDialog) {
+function _useIntoSequence(tracker, item, entry, token, skipDialog, fullAttack = null) {
   return new Promise((resolve) => {
     let reported = false;
-    const report = ({ ok, reason }) => {
+    const report = ({ ok, reason, block }) => {
       reported = true;
-      resolve(ok ? null : reason);
+      resolve(ok ? { reason: null, block } : { reason });
     };
     const actionId = entry?.documentName ? undefined : entry?.action;
     const presets = entry?.documentName ? undefined : entry?.presets;
@@ -1903,15 +1961,15 @@ function _useIntoSequence(tracker, item, entry, token, skipDialog) {
         actionId,
         skipDialog,
         token: token ?? undefined,
-        options: { sequentialAttacks: { tracker, report, presets } },
+        options: { sequentialAttacks: { tracker, report, presets, fullAttack } },
       })
       .then((result) => {
         // Unreported means another module's wrapper resolved the use before this one ran.
-        if (!reported) resolve(result === null ? "cancelled" : "outside");
+        if (!reported) resolve({ reason: result === null ? "cancelled" : "outside" });
       })
       .catch((err) => {
         console.error(`pf1-sequential-attacks | startSequence: "${item.name}" threw.`, err);
-        if (!reported) resolve("error");
+        if (!reported) resolve({ reason: "error" });
       });
   });
 }
