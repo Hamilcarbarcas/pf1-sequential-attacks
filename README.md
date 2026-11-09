@@ -183,3 +183,4 @@ in the sequence, and `isFirstInSequence` is true only for the first attack of th
   - **Pathfinder 1e** system
 - **Optional**:
   - **pf1-new-script-hooks** v1.6.0+ — enables the per-attack **Per Use** script call category described above.
+  - **[PF1 Manual Rolls](https://github.com/Hamilcarbarcas/pf1-manual-rolls)**: with manual rolls on, **Roll Next Attack** asks for that attack's d20 and damage dice in one prompt, and **Roll All Remaining** asks for every remaining attack's dice, across every action in the tracker, in one prompt before any of them rolls.

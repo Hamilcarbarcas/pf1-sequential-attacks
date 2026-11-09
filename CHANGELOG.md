@@ -10,6 +10,10 @@
 ## [Unreleased]
 
 ### Added
+- **PF1 Manual Rolls.** With [PF1 Manual Rolls](https://github.com/Hamilcarbarcas/pf1-manual-rolls)
+  on, Roll Next Attack asks for the attack's dice in one prompt, and Roll All Remaining asks for
+  every remaining attack's dice, across all the tracker's actions (both weapons of a two-weapon
+  routine), in one prompt before any of them rolls. Without that module nothing changes.
 - **Routines from other modules.** A module can now add attack routines built from the
   character's current state (for example, what is equipped), shown at the top of Attack Routines
   with a bolt icon while they apply. Their Quick roll, Quickbar, description, and per-weapon presets

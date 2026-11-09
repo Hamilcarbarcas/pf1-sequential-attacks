@@ -1321,6 +1321,25 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   /**
+   * PF1 Manual Rolls: record the dice a block's remaining attacks will roll, by building them on
+   * a copy of the block's ActionUse. Nothing is rolled for real and nothing on the block changes.
+   *
+   * @param {object} session - From game.pf1ManualRolls.attackSession().
+   * @param {SequenceBlock} block
+   * @param {boolean} firstInSequence - Whether the block's first remaining attack opens the sequence.
+   */
+  async _previewBlockRemaining(session, block, firstInSequence) {
+    const { copyAttack } = game.pf1ManualRolls;
+    const startIdx = block.currentIndex;
+    const remaining = block.attacks.slice(startIdx);
+    await session.preview(`${block.id}:`, block.actionUse, async (use) => {
+      for (let i = 0; i < remaining.length; i++) {
+        await this._buildChatAttack({ actionUse: use }, copyAttack(remaining[i]), startIdx + i, firstInSequence && i === 0);
+      }
+    });
+  }
+
+  /**
    * Build a single ChatAttack (attack roll, damage, ammo, effect notes) for one attack.
    * Used both for one-at-a-time resolution and for assembling the all-remaining card.
    *
@@ -1478,7 +1497,17 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     this.sequenceStarted = true;
 
     // Build the ChatAttack for this single attack.
-    const chatAttack = await this._buildChatAttack(block, atk, idx, isFirstInSequence);
+    const build = () => this._buildChatAttack(block, atk, idx, isFirstInSequence);
+    const session = _manualRollSession();
+    let chatAttack;
+    if (session) {
+      await session.preview("", actionUse, (use) =>
+        this._buildChatAttack({ actionUse: use }, game.pf1ManualRolls.copyAttack(atk), idx, isFirstInSequence));
+      await session.prompt();
+      chatAttack = await session.run("", actionUse, build);
+    } else {
+      chatAttack = await build();
+    }
     shared.chatAttacks = [chatAttack];
 
     // Save DC
@@ -1568,9 +1597,20 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
    * vanilla PF1 full-attack behaviour for whatever is left of each block.
    */
   async _resolveAllRemaining() {
+    const session = _manualRollSession();
+    if (session) {
+      let firstInSequence = !this.sequenceStarted;
+      for (const block of this.blocks) {
+        if (block.done) continue;
+        await this._previewBlockRemaining(session, block, firstInSequence);
+        firstInSequence = false;
+      }
+      await session.prompt();
+    }
+
     for (const block of this.blocks) {
       if (block.done) continue;
-      await this._resolveBlockRemaining(block);
+      await this._resolveBlockRemaining(block, session);
       if (this._resolved) return; // cancelled mid-batch
     }
     this._completed = true;
@@ -1584,8 +1624,10 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
    * so buffs/debuffs toggled between these attacks are NOT picked up individually.
    *
    * @param {SequenceBlock} block
+   * @param {object|null} [session] - PF1 Manual Rolls session that already prompted for this
+   *   block's dice (see _resolveAllRemaining). Without one, the block prompts on its own.
    */
-  async _resolveBlockRemaining(block) {
+  async _resolveBlockRemaining(block, session = null) {
     const actionUse = block.actionUse;
     const shared = actionUse.shared;
     const action = actionUse.action;
@@ -1631,12 +1673,23 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     // Build a ChatAttack for every remaining attack into one card. First-attack-only bonuses
     // apply only to the very first attack of the entire sequence.
     const chatAttacks = [];
-    for (let i = 0; i < remaining.length; i++) {
-      const atk = remaining[i];
-      const idx = startIdx + i;
-      const applyFirstAttackBonuses = isFirstInSequence && i === 0;
-      chatAttacks.push(await this._buildChatAttack(block, atk, idx, applyFirstAttackBonuses));
+    const build = async () => {
+      for (let i = 0; i < remaining.length; i++) {
+        const atk = remaining[i];
+        const idx = startIdx + i;
+        const applyFirstAttackBonuses = isFirstInSequence && i === 0;
+        chatAttacks.push(await this._buildChatAttack(block, atk, idx, applyFirstAttackBonuses));
+      }
+    };
+    if (!session) {
+      session = _manualRollSession();
+      if (session) {
+        await this._previewBlockRemaining(session, block, isFirstInSequence);
+        await session.prompt();
+      }
     }
+    if (session) await session.run(`${block.id}:`, actionUse, build);
+    else await build();
     shared.chatAttacks = chatAttacks;
     shared.attacks = remaining;
 
@@ -2059,6 +2112,17 @@ async function _runPerUseScripts(actionUse, chatAttacks, startIdx, total) {
     });
     if (actionUse.shared?.reject) return;
   }
+}
+
+/**
+ * A PF1 Manual Rolls session, which asks for every die of the attacks about to roll in one
+ * prompt. Null when that module is absent, too old to publish the API, or the user can't roll
+ * manually; the attacks then roll exactly as before.
+ *
+ * @returns {object|null}
+ */
+function _manualRollSession() {
+  return game.pf1ManualRolls?.attackSession?.() ?? null;
 }
 
 // ---- Helper: Subtract ammo for a single attack ---- //
