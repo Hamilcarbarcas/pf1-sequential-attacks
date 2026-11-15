@@ -19,6 +19,7 @@ A Foundry VTT module that allows full attacks to be resolved one attack at a tim
 - **Per-Attack Control**: 
   - Roll attacks one at a time using the "Roll Next Attack" button
   - Skip individual attacks without rolling them
+  - Replace an attack with a trip, disarm, or sunder, or with anything a **Replaces Attack** roll bonus allows
   - Retarget between attacks
   - Toggle buffs/debuffs between attacks
 - **Roll All Remaining**: Roll every remaining (unresolved) attack at once in a single chat card — the same as the system's default full-attack behaviour — to quickly finish out a sequence you no longer need per-attack control over
@@ -53,9 +54,13 @@ When you have multiple attacks in a full attack sequence and sequential mode is 
 1. The attack dialog appears as normal, with the **Sequential attack** checkbox above its buttons
 2. After confirming the dialog with the box ticked, a sequential tracker shows all your attacks
 3. Click **"Roll Next Attack"** to roll the current attack and post it to chat
-4. **"Skip"** an attack if you don't want to roll it
-5. **"Roll All Remaining (N) as one card"** to roll every remaining attack together in a single chat card (vanilla full-attack behaviour); shown whenever two or more attacks are left. Note: this snapshots actor state once, so buffs toggled *between* the batched attacks are not applied individually.
-6. **"Cancel"** to abort the entire sequence
+4. **"Replace Attack"** to use a combat maneuver or other action in place of the current attack (see [Replacing an attack](#replacing-an-attack))
+5. **"Skip"** an attack if you don't want to roll it
+6. **"Edit Options"** to change the attack options (Power Attack, flanking, and so on) for the attacks still to come
+7. **"Roll All Remaining (N) as one card"** to roll every remaining attack together in a single chat card (vanilla full-attack behaviour); shown whenever two or more attacks are left. Note: this snapshots actor state once, so buffs toggled *between* the batched attacks are not applied individually.
+8. **"Cancel"** to abort the entire sequence
+
+The buttons sit in three rows: **Roll Next Attack**, **Replace Attack**, and **Skip** on top; **Edit Options** and **Cancel** below them; **Roll All Remaining** at the bottom.
 
 The tracker will auto-close when all attacks are resolved.
 
@@ -71,6 +76,18 @@ Once a tracker holds more than one action, each gets its own header:
 - **Roll All Remaining** posts one card per action.
 
 Each action spends its own charges or spell slot and runs its own script calls. Haste and Rapid Shot can be ticked on more than one action. You'll get a warning when that happens, but it isn't blocked.
+
+### Replacing an attack
+**Replace Attack** swaps the current attack for something else you're allowed to do in its place. It lists what can stand in for that attack. Pick one and it rolls as its own use, with its own attack dialog (or a quick roll, Shift inverting as usual) and its own chat card. The attack it replaced is marked in the tracker and the sequence moves on. Close the dialog without rolling and nothing changes.
+
+The replacement carries the replaced attack's own bonus, so a trip in place of your second iterative takes the same −5. Options that apply to the whole weapon (Power Attack, two-weapon penalties, and so on) don't carry over; the replacement's own dialog sets those. The replaced weapon spends nothing for that attack.
+
+Where the choices come from:
+
+- **Combat maneuvers** ([PF1 Combat Maneuvers](https://github.com/Hamilcarbarcas/pf1-combat-maneuvers)): any maneuver whose activation is **Attack**, which by default means trip, disarm, and sunder. Offered on melee weapon attacks only.
+- **The Replaces Attack roll bonus** ([Roll Bonuses](https://foundryvtt.com/packages/ckl-roll-bonuses)): add it to an item and choose **Replace With**: one of that item's own actions, or a combat maneuver. The choice is offered on every attack the bonus targets. For example, Quick Dirty Trick gets the bonus with **Combat Maneuver: Dirty Trick** and a melee attack target.
+
+The button only appears when one of those modules is active, and is greyed out when nothing can replace the current attack. Feat restrictions such as "only your highest-bonus attack" or "once per round" aren't enforced.
 
 ### Attack Routines
 A routine is a saved set of attacks that starts as one sequence. Routines live in their own category at the top of the combat tab.
@@ -88,7 +105,7 @@ A routine is a saved set of attacks that starts as one sequence. Routines live i
 - Not ticked: every dialog appears as normal, the action picker included, already filled in from the presets.
 - **Shift** inverts the choice for that one use.
 
-**Quickbar** ticked shows the routine with the actor's quick actions, both on the sheet and on the token HUD. Click uses it; right-click opens the actor's combat tab. **Drag a routine row to the hotbar** for a macro that uses it on whichever token is selected, so one macro serves every token of an NPC.
+**Quickbar** (on by default, for saved and auto-built routines alike) shows the routine with the actor's quick actions, both on the sheet and on the token HUD. Click uses it; right-click opens the actor's combat tab. **Drag a routine row to the hotbar** for a macro that uses it on whichever token is selected, so one macro serves every token of an NPC.
 
 For unlinked NPC tokens, build routines on the actor in the sidebar; a routine edited on a single token's own sheet stays with that token.
 
@@ -184,3 +201,5 @@ in the sequence, and `isFirstInSequence` is true only for the first attack of th
 - **Optional**:
   - **pf1-new-script-hooks** v1.6.0+ — enables the per-attack **Per Use** script call category described above.
   - **[PF1 Manual Rolls](https://github.com/Hamilcarbarcas/pf1-manual-rolls)**: with manual rolls on, **Roll Next Attack** asks for that attack's d20 and damage dice in one prompt, and **Roll All Remaining** asks for every remaining attack's dice, across every action in the tracker, in one prompt before any of them rolls.
+  - **[PF1 Combat Maneuvers](https://github.com/Hamilcarbarcas/pf1-combat-maneuvers)**: trip, disarm, and sunder (any maneuver with an **Attack** activation) can replace a melee attack. See [Replacing an attack](#replacing-an-attack).
+  - **[Roll Bonuses](https://foundryvtt.com/packages/ckl-roll-bonuses)**: adds the **Replaces Attack** bonus, which lets an item's action or a combat maneuver replace the attacks the bonus targets.

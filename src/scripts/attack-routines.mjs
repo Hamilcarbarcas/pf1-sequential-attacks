@@ -113,7 +113,7 @@ function getDerivedRoutines(actor) {
         name: routine.name,
         img: routine.img ?? null,
         description: settings.description ?? "",
-        quickbar: !!settings.quickbar,
+        quickbar: settings.quickbar !== false, // absent reads as on
         quickRoll: !!settings.quickRoll,
         entries: routine.entries.map((entry, index) => ({
           id: `${index}-${entry.itemId}`,
@@ -483,7 +483,7 @@ function _activateSection(sheet, section) {
         name: game.i18n.localize("SEQ.Routine.DefaultName"),
         img: null,
         description: "",
-        quickbar: false,
+        quickbar: true,
         quickRoll: false,
         entries: [],
       });

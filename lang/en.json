@@ -21,6 +21,20 @@
   "SEQ.Button.RollAll": "Roll All Remaining ({count}) as one card",
   "SEQ.Button.RollAllMulti": "Roll All Remaining ({count}), one card per action",
   "SEQ.Button.OK": "OK",
+  "SEQ.Button.Replace": "Replace Attack",
+  "SEQ.Button.Back": "Back",
+
+  "SEQ.Replace.PickerTitle": "Replace {attack} with:",
+  "SEQ.Replace.None": "Nothing can replace this attack.",
+  "SEQ.Replace.RowLabel": "{label}: {replacement}",
+  "SEQ.Replace.CardLabel": "{label} (in place of {replaced})",
+
+  "SEQ.Bonus.Label": "Replaces Attack",
+  "SEQ.Bonus.Tooltip": "In a sequential attack, the chosen action (or combat maneuver) can be used in place of any one attack this bonus targets. It rolls on its own card and carries that attack's iterative penalty.",
+  "SEQ.Bonus.Action": "Replace With",
+  "SEQ.Bonus.ManeuverChoice": "Combat Maneuver: {name}",
+  "SEQ.Bonus.Hint": "Replaces attack: {name}",
+  "SEQ.Bonus.HintNone": "Replaces attack: (nothing chosen)",
 
   "SEQ.Dialog.Start": "Sequential attack",
   "SEQ.Dialog.Join": "Add to sequential attack",
@@ -60,10 +74,12 @@
   "SEQ.Warn.DerivedUnavailable": "That attack routine isn't available with what is equipped.",
   "SEQ.Warn.RoutineEmpty": "{name} has no attacks.",
   "SEQ.Warn.RoutineItemType": "{name} can't be part of an attack routine.",
+  "SEQ.Warn.ReplaceOutside": "{name} was handled outside the sequence. If it rolled, use Skip to mark the attack.",
 
   "SEQ.Error.Notify": "{msg} Check console.",
   "SEQ.Error.ResolveAttack": "Error resolving attack.",
   "SEQ.Error.ResolveRemaining": "Error resolving remaining attacks.",
   "SEQ.Error.EditOptions": "Error editing attack options.",
-  "SEQ.Error.RemoveBlock": "Error removing action."
+  "SEQ.Error.RemoveBlock": "Error removing action.",
+  "SEQ.Error.ReplaceAttack": "Error replacing attack."
 }

@@ -10,6 +10,13 @@
 ## [Unreleased]
 
 ### Added
+- **Replace Attack.** A new tracker button uses something else in place of the current attack:
+  trip, disarm, or sunder (with [PF1 Combat Maneuvers](https://github.com/Hamilcarbarcas/pf1-combat-maneuvers),
+  melee attacks only), or anything a **Replaces Attack** roll bonus allows. The replacement rolls on
+  its own card with the replaced attack's iterative penalty, and the sequence moves on.
+- **Replaces Attack roll bonus** (with [Roll Bonuses](https://foundryvtt.com/packages/ckl-roll-bonuses)).
+  Pick one of the item's own actions or a combat maneuver; it can replace any attack the bonus
+  targets. Covers feats such as Quick Dirty Trick.
 - **PF1 Manual Rolls.** With [PF1 Manual Rolls](https://github.com/Hamilcarbarcas/pf1-manual-rolls)
   on, Roll Next Attack asks for the attack's dice in one prompt, and Roll All Remaining asks for
   every remaining attack's dice, across all the tracker's actions (both weapons of a two-weapon
@@ -27,6 +34,7 @@
 - **Sequential attack checkbox** in the attack dialog, which decides whether the attack starts or joins a sequence. Untick it for an attack that isn't part of the full attack.
 - **Attack Routines.** A new category at the top of the combat tab for saved sets of attacks. Drag attacks from the sheet onto a routine, reorder them, and set preset dialog options per attack through the real attack dialog without rolling anything. Using a routine starts every attack as one sequence, either quick-rolled with the presets or through each dialog filled in from them. Routines can appear with the actor's quick actions on the sheet and token HUD, and can be dragged to the hotbar.
 - **`startSequence(subject, entries, options)` API** for module developers, at `game.modules.get("pf1-sequential-attacks").api`. Starts several of one attacker's actions as a single sequence (or adds them to its open one), each through its normal attack dialog or quick-rolled. Entries that can't join are left out with a warning and spend nothing.
+- **Quickbar on by default** for every routine: new saved routines and routines built by other modules (two-weapon, natural attacks) start with Quickbar ticked. Untick it on the routine's sheet to hide one.
 - **Use Legacy Theme** setting (per-client). Restores the tracker window's original blue/green/gold colour scheme.
 - **Per-Use script calls fire once per attack.** With pf1-new-script-hooks v1.6.0 or later installed, its **Per Use** category runs for each attack as that attack's card is built — the seam for a per-projectile animation, since `shared.targets` has already been refreshed to whatever *that* attack is aimed at. The count and index sequence match what an ordinary one-card full attack produces, so the same script works with sequential mode on or off. Entirely optional: with that module absent, nothing happens. `shared.reject` from such a script cancels the sequence.
 - **`pf1SequentialAttacks.postCard(actionUse, message)` hook** for module developers. Fires after each card posts, whether it holds one attack or a Roll All Remaining batch. While it runs, `shared.attacks` holds exactly that card's attacks, in the card's order, so an index into it matches the card's `system.rolls.attacks`. `pf1PostActionUse` still fires once at the end of the sequence, as before, with the last card. `message` is `null` when the card was hidden.
@@ -34,6 +42,8 @@
 - Actions that roll **no attack** can now be sequenced, when something gives them more than one entry in the attack list — a module that makes a magic-missile-style spell resolve several times, for example. Such an action is walked one use at a time like any full attack, so it can be retargeted between uses. Actions that roll no attack and produce a single entry are untouched and hand off to the normal flow exactly as before.
 
 ### Changed
+- **Tracker buttons regrouped** into three rows: Roll Next Attack, Replace Attack, and Skip; then
+  Edit Options and Cancel; then Roll All Remaining.
 - **Sequential Full Attacks** is replaced by **Sequential Attacks**, with three modes: **Always** (default; the checkbox starts ticked for full attacks), **Ask** (starts unticked), and **Off**. It is saved per user instead of per browser, so a player's choice follows them to any device. Choices saved under the old setting are not carried over: everyone starts on Always.
 - Quick-rolled full attacks now go sequential under Always (and join an open tracker under either mode), with or without pf1-new-script-hooks installed. A quick-rolled single attack always resolves normally.
 - Tracker window restyled to match companion modules: amber accent on dark panels, a status rail on the current attack, and an amber-gradient primary button. Purely cosmetic — attack resolution is unchanged.

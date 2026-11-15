@@ -8,6 +8,8 @@
  * Uses libWrapper to wrap ActionUse.prototype.process().
  */
 
+import { replaceAvailable, replacementCandidates, joinBonus, cleanBonus } from "./replace-attack.mjs";
+
 // ---- Setting Registration ---- //
 
 Hooks.once("init", () => {
@@ -228,6 +230,7 @@ async function sequentialProcessWrapper(wrapped, { skipDialog = false } = {}) {
   // A use routed here by the batch-start API joins that sequence whatever the setting;
   // one from an Attack Routine's edit-preset control only collects its dialog's choices.
   const batch = this.shared.useOptions?.sequentialAttacks;
+  if (batch?.replace) return _replaceProcess(this, wrapped, batch.replace, skipDialog);
   if (batch?.capture) return _captureProcess(this, batch);
   if (batch?.tracker) return _batchProcess(this, batch, skipDialog);
 
@@ -478,6 +481,45 @@ async function _batchProcess(actionUse, batch, skipDialog) {
   tracker.render(); // no-op until the tracker's first render
   await tracker.ended;
   return added.block.resolvedAny ? actionUse : undefined;
+}
+
+/**
+ * process() for a use standing in for one attack of a sequence (DESIGN.md §14). It resolves
+ * on its own, through the normal chain with its own dialog and card, as a single attack that
+ * carries the replaced entry's bonus (an iterative's -5, for example). The tracker reads
+ * `replace.resolved` afterwards to decide whether the attack was used up.
+ *
+ * @param {ActionUse} actionUse
+ * @param {Function} wrapped - The next process() in the chain.
+ * @param {{bonus: string, label: string, reached?: boolean, resolved?: boolean}} replace -
+ *   From the tracker's Replace Attack picker.
+ * @param {boolean} skipDialog - process()'s own argument, passed through.
+ */
+async function _replaceProcess(actionUse, wrapped, replace, skipDialog) {
+  replace.reached = true;
+  const shared = actionUse.shared;
+
+  // process() regenerates the list before the dialog; narrow it after every regeneration.
+  const originalGenerate = actionUse.generateAttacks;
+  actionUse.generateAttacks = function (forceFullAttack) {
+    const generated = originalGenerate.call(this, forceFullAttack);
+    const narrow = () => {
+      const [first] = shared.attacks;
+      if (!first) return shared.attacks;
+      first.attackBonus = joinBonus(first.attackBonus, replace.bonus);
+      first.label = game.i18n.format("SEQ.Replace.CardLabel", { label: first.label, replaced: replace.label });
+      shared.attacks = [first];
+      return shared.attacks;
+    };
+    return generated instanceof Promise ? generated.then(narrow) : narrow();
+  };
+  try {
+    const result = await wrapped({ skipDialog });
+    replace.resolved = result === actionUse;
+    return result;
+  } finally {
+    delete actionUse.generateAttacks; // restore the prototype method
+  }
 }
 
 /**
@@ -769,6 +811,7 @@ class SequenceBlock {
     this.currentIndex = 0;          // head: next unresolved attack
     this.resolvedIndices = new Set();
     this.skippedIndices = new Set();
+    this.replacedIndices = new Map(); // index -> label of what stood in for it (DESIGN.md §14)
     this.scriptsRun = false;        // "use" script calls fired for this block
     this.resolvedAny = false;       // at least one attack resolved; gates postUse
   }
@@ -810,6 +853,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     this._completed = false;
     this._resolved = false;      // Promise settled?
     this._busy = false;          // an async action is in flight
+    this._replacing = false;     // the Replace Attack picker is showing (DESIGN.md §14)
     this._autoCloseTimer = null; // auto-close timer once the sequence completes
     this._resolve = null;        // Promise resolve callback
     /** Settles after the end-of-sequence lifecycle; joined uses await it. */
@@ -836,6 +880,9 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       rollBlock: SequentialAttackTracker.#onRollBlock,
       editBlock: SequentialAttackTracker.#onEditBlock,
       removeBlock: SequentialAttackTracker.#onRemoveBlock,
+      replace: SequentialAttackTracker.#onReplace,
+      replaceWith: SequentialAttackTracker.#onReplaceWith,
+      replaceBack: SequentialAttackTracker.#onReplaceBack,
     },
   };
 
@@ -1034,11 +1081,17 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     return attacks.map((atk, i) => {
       const isResolved = block.resolvedIndices.has(i);
       const isSkipped = block.skippedIndices.has(i);
+      const replacedBy = block.replacedIndices.get(i);
       const isHead = i === block.currentIndex && !this._completed;
 
       let status = "pending";
       let icon = "fa-circle-notch";
-      if (isSkipped) {
+      let label = atk.label;
+      if (replacedBy !== undefined) {
+        status = "replaced";
+        icon = "fa-right-left";
+        label = game.i18n.format("SEQ.Replace.RowLabel", { label: atk.label, replacement: replacedBy });
+      } else if (isSkipped) {
         status = "skipped";
         icon = "fa-forward";
       } else if (isResolved) {
@@ -1058,8 +1111,43 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
         bonus = bonusTotal >= 0 ? `+${bonusTotal}` : `${bonusTotal}`;
       }
 
-      return { label: atk.label, status, icon, bonus };
+      return { label, status, icon, bonus };
     });
+  }
+
+  /** The active block's head attack, or null once nothing is left to roll. */
+  _headAttack() {
+    const block = this.activeBlock;
+    if (!block || block.done || this._completed) return null;
+    return block.attacks[block.currentIndex] ?? null;
+  }
+
+  /**
+   * Template data for the Replace Attack button and its picker (DESIGN.md §14). The button
+   * shows whenever a replacement source exists for this actor, disabled when nothing can
+   * stand in for the current attack.
+   */
+  _replaceContext() {
+    const block = this.activeBlock;
+    const atk = this._headAttack();
+    if (!atk || !replaceAvailable(block.actionUse.actor)) {
+      this._replacing = false;
+      return { show: false, enabled: false, open: false };
+    }
+    const open = this._replacing;
+    const candidates = replacementCandidates(block.actionUse, atk, { preview: open });
+    if (!candidates.length) {
+      this._replacing = false;
+      return { show: true, enabled: false, open: false };
+    }
+    if (!open) return { show: true, enabled: true, open: false };
+    return {
+      show: true,
+      enabled: true,
+      open: true,
+      target: this._multiBlock ? `${block.actionUse.item.name}, ${atk.label}` : atk.label,
+      rows: candidates.map(({ key, label, img, hint, bonus }) => ({ key, label, img, hint, bonus })),
+    };
   }
 
   /** @override */
@@ -1076,7 +1164,9 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
       remainingCount,
       nextLabel: game.i18n.localize(isLast ? "SEQ.Button.RollFinal" : "SEQ.Button.RollNext"),
       nextIcon: isLast ? "fa-flag-checkered" : "fa-dice-d20",
+      replace: this._replaceContext(),
     };
+    if (context.replace.open) context.showRollAll = false;
 
     if (!this._multiBlock) {
       const block = this.activeBlock;
@@ -1193,6 +1283,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!block || block.done) return;
     return this.#runAction(target, () => {
       this.activeBlockIndex = this.blocks.indexOf(block);
+      this._replacing = false;
       return this._resolveCurrentAttack();
     }, game.i18n.localize("SEQ.Error.ResolveAttack"));
   }
@@ -1207,6 +1298,25 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     const block = this._blockFrom(target);
     if (!block) return;
     return this.#runAction(target, () => this._removeBlock(block), game.i18n.localize("SEQ.Error.RemoveBlock"));
+  }
+
+  /** Open the Replace Attack picker for the active block's head. */
+  static #onReplace(event, target) {
+    // A dead button is aria-disabled rather than disabled, so its tooltip still shows.
+    if (this._busy || !this._headAttack() || target.getAttribute("aria-disabled") === "true") return;
+    this._replacing = true;
+    this.render();
+  }
+
+  static #onReplaceBack(event, target) {
+    this._replacing = false;
+    this.render();
+  }
+
+  static #onReplaceWith(event, target) {
+    const key = target.dataset.key;
+    if (!key) return;
+    return this.#runAction(target, () => this._replaceCurrentAttack(key), game.i18n.localize("SEQ.Error.ReplaceAttack"));
   }
 
   static #onCancel(event, target) {
@@ -1834,10 +1944,55 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   /**
+   * Use a replacement in place of the active block's head (DESIGN.md §14). The replacement is
+   * its own use, with its own dialog (or quick roll, Shift inverting as PF1 does) and card; the
+   * head counts as used only if that use resolved. The replaced block spends nothing for it.
+   *
+   * @param {string} key - A candidate key from replacementCandidates().
+   */
+  async _replaceCurrentAttack(key) {
+    const block = this.activeBlock;
+    const idx = block.currentIndex;
+    const atk = this._headAttack();
+    const candidate = atk ? replacementCandidates(block.actionUse, atk).find((c) => c.key === key) : null;
+    if (!candidate) {
+      this._replacing = false;
+      this.render();
+      return;
+    }
+
+    const replace = {
+      bonus: cleanBonus(atk.attackBonus),
+      label: this._multiBlock ? `${block.actionUse.item.name}, ${atk.label}` : atk.label,
+    };
+    await candidate.use({ token: block.actionUse.token, options: { sequentialAttacks: { replace } } });
+
+    // Closed or cancelled while the replacement's dialog was up: leave it be.
+    if (this._resolved) return;
+    if (!replace.reached) {
+      // Another module handled the use before process(); whether it rolled is unknown.
+      ui.notifications.warn(game.i18n.format("SEQ.Warn.ReplaceOutside", { name: candidate.label }));
+    }
+    if (!replace.resolved) {
+      this.render();
+      return;
+    }
+
+    block.replacedIndices.set(idx, candidate.label);
+    block.currentIndex = idx + 1;
+    // The sequence's first attack has been spent, so first-attack bonuses and charge are too.
+    this.sequenceStarted = true;
+    this._replacing = false;
+    this._advanceIfDone();
+    this.render();
+  }
+
+  /**
    * Skip the active block's head without rolling it.
    */
   _skipCurrentAttack() {
     const block = this.activeBlock;
+    this._replacing = false;
     block.skippedIndices.add(block.currentIndex);
     block.currentIndex++;
     this._advanceIfDone();

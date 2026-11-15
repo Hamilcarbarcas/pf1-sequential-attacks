@@ -105,6 +105,66 @@
   flex-grow: 0.4;
 }
 
+/* Top row: Roll Next takes the room, Replace Attack next, Skip narrowest. */
+.seq-attack-buttons .seq-replace-btn {
+  flex-grow: 0.85;
+}
+
+/* Second row: Edit Options and Cancel share it evenly; Cancel alone fills it. */
+.seq-attack-buttons.seq-attack-buttons-manage .seq-cancel-btn {
+  flex-grow: 1;
+}
+
+/* ---- Replace Attack picker ---- */
+
+.sequential-attack-tracker .seq-replace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sequential-attack-tracker .seq-replace-title {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* `height: auto` because core sets a fixed `--button-size` height on every button. */
+.sequential-attack-tracker .seq-replace-panel .seq-replace-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 3px 8px 3px 4px;
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sequential-attack-tracker .seq-replace-option .seq-replace-img {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: none;
+  object-fit: contain;
+}
+
+.sequential-attack-tracker .seq-replace-option .seq-replace-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sequential-attack-tracker .seq-replace-option .seq-replace-hint {
+  font-size: 11px;
+}
+
 /* ---- Blocks (several actions in one sequence) ---- */
 
 .sequential-attack-tracker .seq-block-list {
@@ -414,19 +474,23 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-/* Secondary: Skip, Edit Options, Cancel, Roll All Remaining. */
+/* Secondary: Replace Attack, Skip, Edit Options, Cancel, Roll All Remaining, Back. */
+.seq-theme-amber .seq-replace-btn,
 .seq-theme-amber .seq-skip-btn,
 .seq-theme-amber .seq-edit-btn,
 .seq-theme-amber .seq-cancel-btn,
-.seq-theme-amber .seq-all-btn {
+.seq-theme-amber .seq-all-btn,
+.seq-theme-amber .seq-back-btn {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: var(--seq-dim);
 }
 
+.seq-theme-amber .seq-replace-btn:hover:not(:disabled):not([aria-disabled="true"]),
 .seq-theme-amber .seq-skip-btn:hover:not(:disabled),
 .seq-theme-amber .seq-edit-btn:hover:not(:disabled),
-.seq-theme-amber .seq-all-btn:hover:not(:disabled) {
+.seq-theme-amber .seq-all-btn:hover:not(:disabled),
+.seq-theme-amber .seq-back-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.25);
   color: #fff;
@@ -457,6 +521,53 @@
 .seq-theme-amber .seq-attack-buttons button:disabled {
   opacity: 0.45;
   cursor: wait;
+}
+
+/* Nothing can replace the current attack. */
+.seq-theme-amber .seq-attack-buttons button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- Replace Attack ---- */
+
+/* An attack something else stood in for: dimmed like a resolved one, accent icon, no strike. */
+.seq-theme-amber .seq-attack-row.seq-replaced {
+  color: var(--seq-faint);
+}
+
+.seq-theme-amber .seq-attack-row.seq-replaced .seq-attack-icon {
+  color: var(--seq-accent);
+}
+
+.seq-theme-amber .seq-replace-title {
+  color: var(--seq-dim);
+}
+
+.seq-theme-amber .seq-replace-panel .seq-replace-option {
+  background: var(--seq-panel);
+  border: 1px solid var(--seq-edge);
+  border-radius: 4px;
+  color: var(--seq-text);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.seq-theme-amber .seq-replace-panel .seq-replace-option:hover:not(:disabled) {
+  background: rgba(232, 166, 62, 0.12);
+  border-color: var(--seq-accent);
+}
+
+.seq-theme-amber .seq-replace-panel .seq-replace-option:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.seq-theme-amber .seq-replace-option .seq-attack-bonus {
+  color: var(--seq-accent);
+}
+
+.seq-theme-amber .seq-replace-option .seq-replace-hint {
+  color: var(--seq-faint);
 }
 
 /* Secondary button row (Roll All Remaining) sits directly under the main row. */
@@ -759,4 +870,67 @@
 
 .seq-theme-legacy .seq-block-header .seq-block-remove:hover:not(:disabled) {
   background: rgba(200, 60, 60, 0.55);
+}
+
+/* ---- Replace Attack ---- */
+
+.seq-theme-legacy .seq-replace-btn {
+  background: rgba(40, 150, 140, 0.35);
+  color: #d8fff8;
+  border-color: rgba(70, 200, 185, 0.5) !important;
+}
+
+.seq-theme-legacy .seq-replace-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: rgba(50, 170, 160, 0.5);
+}
+
+.seq-theme-legacy .seq-attack-buttons button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Back (closes the picker) */
+.seq-theme-legacy .seq-back-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-light-highlight, #eee);
+}
+
+.seq-theme-legacy .seq-back-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* An attack something else stood in for */
+.seq-theme-legacy .seq-attack-row.seq-replaced {
+  background: rgba(40, 150, 140, 0.1);
+  color: var(--color-text-dark-secondary, #888);
+  opacity: 0.7;
+}
+
+.seq-theme-legacy .seq-attack-row.seq-replaced .seq-attack-icon {
+  color: #5fd3c2;
+}
+
+.seq-theme-legacy .seq-replace-title {
+  color: var(--color-text-dark-secondary, #aaa);
+}
+
+.seq-theme-legacy .seq-replace-panel .seq-replace-option {
+  background: rgba(40, 150, 140, 0.15);
+  border: 1px solid rgba(70, 200, 185, 0.35);
+  border-radius: 4px;
+  color: var(--color-text-light-highlight, #eee);
+}
+
+.seq-theme-legacy .seq-replace-panel .seq-replace-option:hover:not(:disabled) {
+  background: rgba(50, 170, 160, 0.35);
+}
+
+.seq-theme-legacy .seq-replace-panel .seq-replace-option:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.seq-theme-legacy .seq-replace-option .seq-replace-hint {
+  color: var(--color-text-dark-secondary, #aaa);
 }

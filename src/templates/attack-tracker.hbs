@@ -65,20 +65,49 @@
   </div>
   {{/if}}
 
-  {{!-- Primary buttons --}}
+  {{#if completed}}
   <div class="seq-attack-buttons">
-    {{#if completed}}
     <button type="button" class="seq-close-btn" data-action="done">
       <i class="fas fa-check"></i> {{localize "SEQ.Button.Done"}}
     </button>
-    {{else}}
+  </div>
+
+  {{else if replace.open}}
+  {{!-- Replace Attack picker: what can stand in for the current attack --}}
+  <div class="seq-replace-panel">
+    <div class="seq-replace-title">{{localize "SEQ.Replace.PickerTitle" attack=replace.target}}</div>
+    {{#each replace.rows}}
+    <button type="button" class="seq-replace-option" data-action="replaceWith" data-key="{{this.key}}">
+      <img class="seq-replace-img" src="{{this.img}}" alt="">
+      <span class="seq-replace-label">{{this.label}}{{#if this.hint}} <span class="seq-replace-hint">({{this.hint}})</span>{{/if}}</span>
+      <span class="seq-attack-bonus">{{this.bonus}}</span>
+    </button>
+    {{/each}}
+  </div>
+  <div class="seq-attack-buttons">
+    <button type="button" class="seq-back-btn" data-action="replaceBack">
+      <i class="fas fa-arrow-left"></i> {{localize "SEQ.Button.Back"}}
+    </button>
+  </div>
+
+  {{else}}
+  {{!-- Top row: what happens to the current attack --}}
+  <div class="seq-attack-buttons">
     <button type="button" class="seq-next-btn" data-action="rollNext">
       <i class="fas {{nextIcon}}"></i> {{nextLabel}}
     </button>
+    {{#if replace.show}}
+    <button type="button" class="seq-replace-btn" data-action="replace" {{#unless replace.enabled}}aria-disabled="true" data-tooltip="SEQ.Replace.None"{{/unless}}>
+      <i class="fas fa-right-left"></i> {{localize "SEQ.Button.Replace"}}
+    </button>
+    {{/if}}
     <button type="button" class="seq-skip-btn" data-action="skip">
       <i class="fas fa-forward"></i> {{localize "SEQ.Button.Skip"}}
     </button>
-    {{!-- With several blocks, Edit Options lives on each block's header --}}
+  </div>
+
+  {{!-- Second row: options and cancel. With several blocks, Edit Options lives on each block's header --}}
+  <div class="seq-attack-buttons seq-attack-buttons-secondary seq-attack-buttons-manage">
     {{#unless multi}}
     <button type="button" class="seq-edit-btn" data-action="editOptions">
       <i class="fas fa-sliders-h"></i> {{localize "SEQ.Button.EditOptions"}}
@@ -87,8 +116,8 @@
     <button type="button" class="seq-cancel-btn" data-action="cancel">
       <i class="fas fa-times"></i> {{localize "SEQ.Button.Cancel"}}
     </button>
-    {{/if}}
   </div>
+  {{/if}}
 
   {{!-- Secondary row: roll all remaining as a single chat card (vanilla behaviour) --}}
   {{#if showRollAll}}
