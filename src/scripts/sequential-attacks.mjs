@@ -813,6 +813,7 @@ class SequenceBlock {
     this.skippedIndices = new Set();
     this.replacedIndices = new Map(); // index -> label of what stood in for it (DESIGN.md §14)
     this.scriptsRun = false;        // "use" script calls fired for this block
+    this.scriptFootnotes = [];      // footnotes the "use" scripts pushed; added to each of the block's cards
     this.resolvedAny = false;       // at least one attack resolved; gates postUse
   }
 
@@ -1417,6 +1418,12 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
    * Run the block's "use"-category script calls, once per block. Initializes the
    * first-attack-only bonus arrays so scripts can push to them.
    *
+   * PF1 runs "use" scripts after addFootnotes, so scripts push onto
+   * `shared.templateData.footnotes` (on-hit riders such as Trip). Here they run
+   * before any card's footnotes exist, and each card rebuilds the list, so they
+   * get an empty list now and what they push is kept on the block for
+   * `_cardFootnotes`.
+   *
    * @param {SequenceBlock} block
    * @returns {Promise<boolean>} false if a script rejected the action (sequence should abort).
    */
@@ -1424,10 +1431,27 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     const shared = block.actionUse.shared;
     shared.firstAttackBonus ??= [];
     shared.firstAttackDamageBonus ??= [];
+    shared.templateData ??= {};
+    shared.templateData.footnotes = [];
     await block.actionUse.executeScriptCalls();
+    const pushed = shared.templateData?.footnotes;
+    block.scriptFootnotes = Array.isArray(pushed) ? [...pushed] : [];
     if (shared.scriptData?.reject) return false;
     block.scriptsRun = true;
     return true;
+  }
+
+  /**
+   * Build a card's footnotes: PF1's own for the attacks on it, then the ones the
+   * block's "use" scripts added.
+   *
+   * @param {SequenceBlock} block
+   */
+  async _cardFootnotes(block) {
+    const actionUse = block.actionUse;
+    actionUse.shared.templateData.footnotes = [];
+    await actionUse.addFootnotes();
+    if (block.scriptFootnotes?.length) actionUse.shared.templateData.footnotes.push(...block.scriptFootnotes);
   }
 
   /**
@@ -1625,8 +1649,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     shared.saveDC = action.getDC(rollData);
 
     // Reset footnotes and template data for this attack's card
-    shared.templateData.footnotes = [];
-    await actionUse.addFootnotes();
+    await this._cardFootnotes(block);
 
     // Narrow shared.attacks to just the current attack BEFORE firing hooks,
     // so that hooks iterating shared.attacks (e.g. fumble confirmation) see
@@ -1808,8 +1831,7 @@ class SequentialAttackTracker extends HandlebarsApplicationMixin(ApplicationV2) 
     shared.saveDC = action.getDC(rollData);
 
     // Footnotes (computed once across all attacks in the card)
-    shared.templateData.footnotes = [];
-    await actionUse.addFootnotes();
+    await this._cardFootnotes(block);
 
     // Fire pf1PreActionUse once for the whole card (vanilla fires it once per use).
     const hookResult = Hooks.call("pf1PreActionUse", actionUse);

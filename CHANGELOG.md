@@ -51,6 +51,7 @@
 - Power Attack numbers on attacks after the first now defer to astora-mod's Combat Options when it is installed and on, so a changed penalty or damage bonus holds for the whole sequence. Without it nothing changes.
 
 ### Fixed
+- A "use" script call that adds a footnote (`shared.templateData.footnotes.push(...)`, as on-hit riders like Trip do) threw "Cannot read properties of undefined (reading 'push')" and stopped the action when it was part of a sequence. Its footnotes now show on each card of that action.
 - A one-attack weapon given a second attack by Haste, Rapid Shot, or Manyshot resolved only one attack unless the Sequential attack box was ticked by hand. Under Always the box now ticks itself when those add an attack, and an attack that doesn't go sequential keeps every attack the dialog added.
 - **Edit Options** stayed greyed out after cancelling the edit dialog, until another attack was rolled or skipped. Tracker buttons now re-enable whenever an action finishes without redrawing the window.
 - The per-attack card built an attack roll unconditionally. An action whose type carries no attack roll now gets damage and effect notes only, matching the system's own behaviour.
